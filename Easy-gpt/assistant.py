@@ -3,7 +3,13 @@ from __future__ import annotations
 import gc
 
 from dataclasses import dataclass, field
+import json
+from typing import Any, AsyncGenerator, Callable, Dict, Generator, List, Literal, Optional
+
+
+from dataclasses import dataclass, field
 from typing import Any, AsyncGenerator, Dict, Generator, List, Literal, Optional
+
 
 from openai import AsyncOpenAI, OpenAI
 
@@ -25,9 +31,14 @@ Context = Dict[Role, List[str]]
 
 
 
+@dataclass(slots=True)
+class Assistant:
+
+
 
 @dataclass(slots=True)
 class Assistant:
+
 
     """Wrapper around the OpenAI Responses API.
 
@@ -47,7 +58,10 @@ class Assistant:
         Track conversation history for later reuse when ``True``.
     """
 
+
+
     """Wrapper around the OpenAI Responses API."""
+
 
 
     system_prompt: str
@@ -55,6 +69,12 @@ class Assistant:
     api_key: Optional[str] = None
     tools: List[Dict[str, Any]] = field(default_factory=list)
     use_context: bool = False
+
+    _functions: Dict[str, Callable[..., Any]] = field(default_factory=dict, init=False)
+
+    client: OpenAI = field(init=False)
+    async_client: AsyncOpenAI = field(init=False)
+
 
     client: OpenAI = field(init=False)
     async_client: AsyncOpenAI = field(init=False)
@@ -65,9 +85,12 @@ class Assistant:
         """Initialize OpenAI clients and optional context store."""
 
 
+
+
     context: Optional[Dict[str, List[str]]] = field(init=False)
 
     def __post_init__(self) -> None:
+
 
         if self.api_key:
             self.client = OpenAI(api_key=self.api_key)
@@ -76,6 +99,8 @@ class Assistant:
             self.client = _SYNC_CLIENT
             self.async_client = _ASYNC_CLIENT
         self.context = {"user": [], "assistant": []} if self.use_context else None
+
+
 
 from typing import Any, Dict, Iterable, List, Optional
 
@@ -121,6 +146,7 @@ class Assistant:
 
 
 
+
     # ------------------------------------------------------------------
     # Configuration helpers
     # ------------------------------------------------------------------
@@ -134,6 +160,12 @@ class Assistant:
             Replacement system instruction for subsequent responses.
         """
 
+
+        self.system_prompt = new_prompt
+
+    def add_tool(self, tool: Dict[str, Any]) -> None:
+        """Register a raw tool schema for function calling.
+
         """Change the system prompt for future calls."""
 
 
@@ -143,16 +175,55 @@ class Assistant:
 
         """Register a tool for function calling.
 
+
         Parameters
         ----------
         tool:
             JSON schema describing the callable tool.
         """
 
+
+        self.tools.append(tool)
+
+    def add_function(
+        self,
+        func: Callable[..., Any],
+        *,
+        name: Optional[str] = None,
+        description: str | None = None,
+        parameters: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Register a Python callable as a function tool.
+
+        Parameters
+        ----------
+        func:
+            Callable object to expose to the model.
+        name:
+            Override the exported function name. Defaults to ``func.__name__``.
+        description:
+            Optional human readable description of the function.
+        parameters:
+            JSON schema for the function arguments. Defaults to an empty schema.
+        """
+
+        tool_name = name or func.__name__
+        schema = {
+            "type": "function",
+            "function": {
+                "name": tool_name,
+                "description": description or (func.__doc__ or ""),
+                "parameters": parameters or {},
+            },
+        }
+        self.tools.append(schema)
+        self._functions[tool_name] = func
+
         """Register a tool for function calling."""
 
 
         self.tools.append(tool)
+
 
     # ------------------------------------------------------------------
     # Synchronous API
@@ -172,7 +243,10 @@ class Assistant:
             Response text from the model.
         """
 
+
+
         """Return a response synchronously."""
+
 
 
         kwargs: Dict[str, Any] = {
@@ -185,6 +259,10 @@ class Assistant:
 
         response = self.client.responses.create(**kwargs)
         text = str(response.output_text)
+ent-flexible-openai-tool-selection-adlk3m
+        text += self._maybe_invoke_tools(response)
+
+
 
         if self.use_context and self.context is not None:
             self.context["user"].append(prompt)
@@ -207,12 +285,15 @@ class Assistant:
             Growing partial response text.
         """
 
+3m
+
 
     def ask_stream(self, prompt: str) -> Generator[str, None, None]:
 
     def ask_stream(self, prompt: str) -> Iterable[str]:
 
         """Yield partial responses as they stream in."""
+
 
 
         kwargs: Dict[str, Any] = {
@@ -253,7 +334,10 @@ class Assistant:
             Response text from the model.
         """
 
+
+
         """Return a response using ``AsyncOpenAI``."""
+
 
 
         kwargs: Dict[str, Any] = {
@@ -266,6 +350,10 @@ class Assistant:
 
         response = await self.async_client.responses.create(**kwargs)
         text = str(response.output_text)
+
+        text += self._maybe_invoke_tools(response)
+
+
 
         if self.use_context and self.context is not None:
             self.context["user"].append(prompt)
@@ -289,11 +377,14 @@ class Assistant:
         """
 
 
+
+
     async def ask_stream_async(self, prompt: str) -> AsyncGenerator[str, None]:
 
     async def ask_stream_async(self, prompt: str) -> Iterable[str]:
 
         """Asynchronously yield partial responses."""
+
 
 
         kwargs: Dict[str, Any] = {
@@ -327,13 +418,39 @@ class Assistant:
         gc.collect()
 
 
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+    def _maybe_invoke_tools(self, response: Any) -> str:
+        """Call any tool functions requested by the model."""
+
+        if not getattr(response, "output", None):
+            return ""
+        result = ""
+        for item in response.output:
+            if getattr(item, "type", "") == "tool_call":
+                func = self._functions.get(getattr(item, "name", ""))
+                if func is None:
+                    continue
+                try:
+                    args = json.loads(getattr(item, "arguments", "{}"))
+                except json.JSONDecodeError:
+                    args = {}
+                output = func(**args)  # type: ignore[arg-type]
+                result += str(output)
+        return result
+
+
+
 
 __all__ = ["Assistant", "ModelName", "Role", "Context"]
+
 
 
 __all__ = ["Assistant", "ModelName"]
 
 __all__ = ["Assistant"]
+
 
 
 

@@ -5,6 +5,11 @@ Easy GPT is a tiny wrapper around the OpenAI Responses API that aims to make
 chatting with OpenAI models simple and flexible. The package ships with
 comprehensive docstrings and literal type hints to improve IDE assistance.
 
+
+
+chatting with OpenAI models simple and flexible. The package ships with
+comprehensive docstrings and literal type hints to improve IDE assistance.
+
 chatting with OpenAI models simple and flexible.
 
 
@@ -15,13 +20,24 @@ chatting with OpenAI models simple and flexible.
 - Support for `AsyncOpenAI` via async helper methods.
 - Multiple assistants with independent system prompts.
 - Update system prompts at runtime with `update_system_prompt`.
+
+- Register custom function tools through `add_tool` or expose Python callables
+  with `add_function`.
+- Context tracking and simple garbage collection using `clear_context`.
+
 - Register custom function tools through `add_tool`.
 - Context tracking and simple garbage collection using `clear_context`.
 - API key pulled from the environment when not supplied explicitly.
 
+
 - Literal types for model and role names (`ModelName`, `Role`) provide IDE
   autocompletion and safer code, while shared OpenAI clients and `dataclass`
   slots deliver faster startup.
+
+
+## Quick start
+
+```python
 
 
 - Typed model hints via `ModelName` literals and faster startup thanks to
@@ -34,14 +50,17 @@ chatting with OpenAI models simple and flexible.
 ```python
 
 
+
 from easy_gpt import Assistant, ModelName
 
 # IDEs will offer suggestions for ModelName values
 assistant = Assistant(system_prompt="You are helpful.", model="gpt-4o-mini")
 
+
 from easy_gpt import Assistant
 
 assistant = Assistant(system_prompt="You are helpful.")
+
 
 print(assistant.ask("Hello, world!"))
 
@@ -66,5 +85,7 @@ asyncio.run(main())
 ## License
 
 MIT
+
+
 
 
