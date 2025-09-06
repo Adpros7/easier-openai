@@ -1,0 +1,13 @@
+[project]
+name = "easy-gpt"
+version = "0.1.0"
+description = "Lightweight wrapper around the OpenAI responses API"
+requires-python = ">=3.10"
+dependencies = [
+    "openai>=1.0.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
