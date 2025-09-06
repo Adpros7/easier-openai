@@ -1,49 +1,299 @@
-from typing import Literal
-from openai import OpenAI
+from __future__ import annotations
+
+import gc
+from dataclasses import dataclass, field
+import json
+from typing import Any, AsyncGenerator, Callable, Dict, Generator, List, Literal, Optional
+
+from openai import AsyncOpenAI, OpenAI
+
+# Reuse clients to avoid repeated HTTP setup overhead
+_SYNC_CLIENT: OpenAI = OpenAI()
+_ASYNC_CLIENT: AsyncOpenAI = AsyncOpenAI()
+
+# Commonly used OpenAI responses models for IDE auto-complete
+ModelName = Literal["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1"]
+"""Literal type for the most common OpenAI model names."""
+
+# Conversation roles and context store
+Role = Literal["user", "assistant"]
+"""Allowed participant roles in the conversation history."""
+
+Context = Dict[Role, List[str]]
+"""Simple mapping of roles to their ordered utterances."""
 
 
-class assistant:
-    def __init__(self, api_key: str | None, system_prompt: str, model: Literal['gpt-5', 'gpt-5-mini', 'gpt-5-nano', 'gpt-5-2025-08-07', 'gpt-5-mini-2025-08-07', 'gpt-5-nano-2025-08-07', 'gpt-5-chat-latest', 'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano', 'gpt-4.1-2025-04-14', 'gpt-4.1-mini-2025-04-14', 'gpt-4.1-nano-2025-04-14', 'o4-mini', 'o4-mini-2025-04-16', 'o3', 'o3-2025-04-16', 'o3-mini', 'o3-mini-2025-01-31', 'o1', 'o1-2024-12-17', 'o1-preview', 'o1-preview-2024-09-12', 'o1-mini', 'o1-mini-2024-09-12', 'gpt-4o', 'gpt-4o-2024-11-20', 'gpt-4o-2024-08-06', 'gpt-4o-2024-05-13', 'gpt-4o-audio-preview', 'gpt-4o-audio-preview-2024-10-01', 'gpt-4o-audio-preview-2024-12-17', 'gpt-4o-audio-preview-2025-06-03', 'gpt-4o-mini-audio-preview', 'gpt-4o-mini-audio-preview-2024-12-17', 'gpt-4o-search-preview', 'gpt-4o-mini-search-preview', 'gpt-4o-search-preview-2025-03-11', 'gpt-4o-mini-search-preview-2025-03-11', 'chatgpt-4o-latest', 'codex-mini-latest', 'gpt-4o-mini', 'gpt-4o-mini-2024-07-18', 'gpt-4-turbo', 'gpt-4-turbo-2024-04-09', 'gpt-4-0125-preview', 'gpt-4-turbo-preview', 'gpt-4-1106-preview', 'gpt-4-vision-preview', 'gpt-4', 'gpt-4-0314', 'gpt-4-0613', 'gpt-4-32k', 'gpt-4-32k-0314', 'gpt-4-32k-0613', 'gpt-3.5-turbo', 'gpt-3.5-turbo-16k', 'gpt-3.5-turbo-0301', 'gpt-3.5-turbo-0613', 'gpt-3.5-turbo-1106', 'gpt-3.5-turbo-0125', 'gpt-3.5-turbo-16k-0613', 'o1-pro', 'o1-pro-2025-03-19', 'o3-pro', 'o3-pro-2025-06-10', 'o3-deep-research', 'o3-deep-research-2025-06-26', 'o4-mini-deep-research', 'o4-mini-deep-research-2025-06-26', 'computer-use-preview', 'computer-use-preview-2025-03-11'],
-                 context: bool = False
-                 ):
-        if not api_key:
-            self.client = OpenAI()
-        self.client = OpenAI(api_key=api_key)
-        self.model = model
-        self.sys_prompt = system_prompt
-        self.context = {"user": [], "assistant": []}
-        if context:
-            self.sys_prompt += f"Respond in only valid python list like this: ['actual response', [list of user context points formatted as a python list], [assistant's context points formatted as a python list]]. Here is the context you can use: {context}"
-        
-    def ask(self, prompt: str) -> str:
-        response = self.client.responses.create(
-            model=self.model,
-            input=prompt,
-            instructions=self.sys_prompt
-        )
-        if self.context:
-            self.context["user"].append(response.output_text[1])
-            self.context["assistant"].append(response.output_text[2])
-            return str(response.output_text[0])
-        
+@dataclass(slots=True)
+class Assistant:
+    """Wrapper around the OpenAI Responses API.
+
+    Parameters
+    ----------
+    system_prompt:
+        Initial system prompt guiding the assistant's behaviour.
+    model:
+        Model name to use. Defaults to ``"gpt-4o-mini"`` but any model
+        identifier may be supplied.
+    api_key:
+        Optional OpenAI API key. Falls back to ``OPENAI_API_KEY``
+        from the environment when not provided.
+    tools:
+        Optional collection of JSON schemas describing callable tools.
+    use_context:
+        Track conversation history for later reuse when ``True``.
+    """
+
+    system_prompt: str
+    model: ModelName | str = "gpt-4o-mini"
+    api_key: Optional[str] = None
+    tools: List[Dict[str, Any]] = field(default_factory=list)
+    use_context: bool = False
+    _functions: Dict[str, Callable[..., Any]] = field(default_factory=dict, init=False)
+
+    client: OpenAI = field(init=False)
+    async_client: AsyncOpenAI = field(init=False)
+    context: Optional[Context] = field(init=False)
+
+    def __post_init__(self) -> None:
+        """Initialize OpenAI clients and optional context store."""
+
+        if self.api_key:
+            self.client = OpenAI(api_key=self.api_key)
+            self.async_client = AsyncOpenAI(api_key=self.api_key)
         else:
-            return str(response.output_text)
-    
-    def ask_stream(self, prompt: str, var_to_update: str):
-        response = self.client.responses.create(
-            model=self.model,
-            input=prompt,
-            instructions=self.sys_prompt,
-            stream=True
-        )
-        bob = eval(var_to_update)
+            self.client = _SYNC_CLIENT
+            self.async_client = _ASYNC_CLIENT
+        self.context = {"user": [], "assistant": []} if self.use_context else None
+
+    # ------------------------------------------------------------------
+    # Configuration helpers
+    # ------------------------------------------------------------------
+    def update_system_prompt(self, new_prompt: str) -> None:
+        """Change the system prompt for future calls.
+
+        Parameters
+        ----------
+        new_prompt:
+            Replacement system instruction for subsequent responses.
+        """
+
+        self.system_prompt = new_prompt
+
+    def add_tool(self, tool: Dict[str, Any]) -> None:
+        """Register a raw tool schema for function calling.
+
+        Parameters
+        ----------
+        tool:
+            JSON schema describing the callable tool.
+        """
+
+        self.tools.append(tool)
+
+    def add_function(
+        self,
+        func: Callable[..., Any],
+        *,
+        name: Optional[str] = None,
+        description: str | None = None,
+        parameters: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Register a Python callable as a function tool.
+
+        Parameters
+        ----------
+        func:
+            Callable object to expose to the model.
+        name:
+            Override the exported function name. Defaults to ``func.__name__``.
+        description:
+            Optional human readable description of the function.
+        parameters:
+            JSON schema for the function arguments. Defaults to an empty schema.
+        """
+
+        tool_name = name or func.__name__
+        schema = {
+            "type": "function",
+            "function": {
+                "name": tool_name,
+                "description": description or (func.__doc__ or ""),
+                "parameters": parameters or {},
+            },
+        }
+        self.tools.append(schema)
+        self._functions[tool_name] = func
+
+    # ------------------------------------------------------------------
+    # Synchronous API
+    # ------------------------------------------------------------------
+    def ask(self, prompt: str) -> str:
+        """Return a response synchronously.
+
+        Parameters
+        ----------
+        prompt:
+            User message to send to the model.
+
+        Returns
+        -------
+        str
+            Response text from the model.
+        """
+
+        kwargs: Dict[str, Any] = {
+            "model": self.model,
+            "input": prompt,
+            "instructions": self.system_prompt,
+        }
+        if self.tools:
+            kwargs["tools"] = self.tools
+
+        response = self.client.responses.create(**kwargs)
+        text = str(response.output_text)
+        text += self._maybe_invoke_tools(response)
+
+        if self.use_context and self.context is not None:
+            self.context["user"].append(prompt)
+            self.context["assistant"].append(text)
+
+        return text
+
+    def ask_stream(self, prompt: str) -> Generator[str, None, None]:
+        """Yield partial responses as they stream in.
+
+        Parameters
+        ----------
+        prompt:
+            User message to send to the model.
+
+        Yields
+        ------
+        str
+            Growing partial response text.
+        """
+
+        kwargs: Dict[str, Any] = {
+            "model": self.model,
+            "input": prompt,
+            "instructions": self.system_prompt,
+            "stream": True,
+        }
+        if self.tools:
+            kwargs["tools"] = self.tools
+
+        response = self.client.responses.create(**kwargs)
+        partial = ""
         for chunk in response:
-           if hasattr(chunk, 'output_text'):
-                bob += str(chunk.output_text)
-                yield bob
-        
-if __name__ == "__main__":
-    var = ""
-    assistants = assistant(api_key=None, system_prompt="You are a helpful assistant.", model="gpt-4o-mini", context=False)
-    for i in assistants.ask_stream("Write a poem about a computer", "var"):
-        print(i)
+            if hasattr(chunk, "output_text"):
+                partial += str(chunk.output_text)
+                yield partial
+
+        if self.use_context and self.context is not None:
+            self.context["user"].append(prompt)
+            self.context["assistant"].append(partial)
+
+    # ------------------------------------------------------------------
+    # Asynchronous API
+    # ------------------------------------------------------------------
+    async def ask_async(self, prompt: str) -> str:
+        """Return a response using ``AsyncOpenAI``.
+
+        Parameters
+        ----------
+        prompt:
+            User message to send to the model.
+
+        Returns
+        -------
+        str
+            Response text from the model.
+        """
+
+        kwargs: Dict[str, Any] = {
+            "model": self.model,
+            "input": prompt,
+            "instructions": self.system_prompt,
+        }
+        if self.tools:
+            kwargs["tools"] = self.tools
+
+        response = await self.async_client.responses.create(**kwargs)
+        text = str(response.output_text)
+        text += self._maybe_invoke_tools(response)
+
+        if self.use_context and self.context is not None:
+            self.context["user"].append(prompt)
+            self.context["assistant"].append(text)
+
+        return text
+
+    async def ask_stream_async(self, prompt: str) -> AsyncGenerator[str, None]:
+        """Asynchronously yield partial responses.
+
+        Parameters
+        ----------
+        prompt:
+            User message to send to the model.
+
+        Yields
+        ------
+        str
+            Growing partial response text.
+        """
+
+        kwargs: Dict[str, Any] = {
+            "model": self.model,
+            "input": prompt,
+            "instructions": self.system_prompt,
+            "stream": True,
+        }
+        if self.tools:
+            kwargs["tools"] = self.tools
+
+        stream = await self.async_client.responses.create(**kwargs)
+        partial = ""
+        async for chunk in stream:
+            if hasattr(chunk, "output_text"):
+                partial += str(chunk.output_text)
+                yield partial
+
+        if self.use_context and self.context is not None:
+            self.context["user"].append(prompt)
+            self.context["assistant"].append(partial)
+
+    # ------------------------------------------------------------------
+    # Housekeeping
+    # ------------------------------------------------------------------
+    def clear_context(self) -> None:
+        """Reset stored context and run the garbage collector."""
+
+        if self.context is not None:
+            self.context = {"user": [], "assistant": []}
+        gc.collect()
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+    def _maybe_invoke_tools(self, response: Any) -> str:
+        """Call any tool functions requested by the model."""
+
+        if not getattr(response, "output", None):
+            return ""
+        result = ""
+        for item in response.output:
+            if getattr(item, "type", "") == "tool_call":
+                func = self._functions.get(getattr(item, "name", ""))
+                if func is None:
+                    continue
+                try:
+                    args = json.loads(getattr(item, "arguments", "{}"))
+                except json.JSONDecodeError:
+                    args = {}
+                output = func(**args)  # type: ignore[arg-type]
+                result += str(output)
+        return result
+
+
+__all__ = ["Assistant", "ModelName", "Role", "Context"]
+
