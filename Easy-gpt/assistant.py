@@ -14,10 +14,41 @@ _ASYNC_CLIENT: AsyncOpenAI = AsyncOpenAI()
 # Commonly used OpenAI responses models for IDE auto-complete
 ModelName = Literal["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1"]
 
+"""Literal type for the most common OpenAI model names."""
+
+# Conversation roles and context store
+Role = Literal["user", "assistant"]
+"""Allowed participant roles in the conversation history."""
+
+Context = Dict[Role, List[str]]
+"""Simple mapping of roles to their ordered utterances."""
+
+
+
 
 @dataclass(slots=True)
 class Assistant:
+
+    """Wrapper around the OpenAI Responses API.
+
+    Parameters
+    ----------
+    system_prompt:
+        Initial system prompt guiding the assistant's behaviour.
+    model:
+        Model name to use. Defaults to ``"gpt-4o-mini"`` but any model
+        identifier may be supplied.
+    api_key:
+        Optional OpenAI API key. Falls back to ``OPENAI_API_KEY``
+        from the environment when not provided.
+    tools:
+        Optional collection of JSON schemas describing callable tools.
+    use_context:
+        Track conversation history for later reuse when ``True``.
+    """
+
     """Wrapper around the OpenAI Responses API."""
+
 
     system_prompt: str
     model: ModelName | str = "gpt-4o-mini"
@@ -27,9 +58,17 @@ class Assistant:
 
     client: OpenAI = field(init=False)
     async_client: AsyncOpenAI = field(init=False)
+
+    context: Optional[Context] = field(init=False)
+
+    def __post_init__(self) -> None:
+        """Initialize OpenAI clients and optional context store."""
+
+
     context: Optional[Dict[str, List[str]]] = field(init=False)
 
     def __post_init__(self) -> None:
+
         if self.api_key:
             self.client = OpenAI(api_key=self.api_key)
             self.async_client = AsyncOpenAI(api_key=self.api_key)
@@ -37,7 +76,7 @@ class Assistant:
             self.client = _SYNC_CLIENT
             self.async_client = _ASYNC_CLIENT
         self.context = {"user": [], "assistant": []} if self.use_context else None
-=======
+
 from typing import Any, Dict, Iterable, List, Optional
 
 from openai import AsyncOpenAI, OpenAI
@@ -81,16 +120,37 @@ class Assistant:
         )
 
 
+
     # ------------------------------------------------------------------
     # Configuration helpers
     # ------------------------------------------------------------------
     def update_system_prompt(self, new_prompt: str) -> None:
+
+        """Change the system prompt for future calls.
+
+        Parameters
+        ----------
+        new_prompt:
+            Replacement system instruction for subsequent responses.
+        """
+
         """Change the system prompt for future calls."""
+
 
         self.system_prompt = new_prompt
 
     def add_tool(self, tool: Dict[str, Any]) -> None:
+
+        """Register a tool for function calling.
+
+        Parameters
+        ----------
+        tool:
+            JSON schema describing the callable tool.
+        """
+
         """Register a tool for function calling."""
+
 
         self.tools.append(tool)
 
@@ -98,7 +158,22 @@ class Assistant:
     # Synchronous API
     # ------------------------------------------------------------------
     def ask(self, prompt: str) -> str:
+
+        """Return a response synchronously.
+
+        Parameters
+        ----------
+        prompt:
+            User message to send to the model.
+
+        Returns
+        -------
+        str
+            Response text from the model.
+        """
+
         """Return a response synchronously."""
+
 
         kwargs: Dict[str, Any] = {
             "model": self.model,
@@ -119,10 +194,26 @@ class Assistant:
 
 
     def ask_stream(self, prompt: str) -> Generator[str, None, None]:
-=======
+        """Yield partial responses as they stream in.
+
+        Parameters
+        ----------
+        prompt:
+            User message to send to the model.
+
+        Yields
+        ------
+        str
+            Growing partial response text.
+        """
+
+
+    def ask_stream(self, prompt: str) -> Generator[str, None, None]:
+
     def ask_stream(self, prompt: str) -> Iterable[str]:
 
         """Yield partial responses as they stream in."""
+
 
         kwargs: Dict[str, Any] = {
             "model": self.model,
@@ -148,7 +239,22 @@ class Assistant:
     # Asynchronous API
     # ------------------------------------------------------------------
     async def ask_async(self, prompt: str) -> str:
+
+        """Return a response using ``AsyncOpenAI``.
+
+        Parameters
+        ----------
+        prompt:
+            User message to send to the model.
+
+        Returns
+        -------
+        str
+            Response text from the model.
+        """
+
         """Return a response using ``AsyncOpenAI``."""
+
 
         kwargs: Dict[str, Any] = {
             "model": self.model,
@@ -169,10 +275,26 @@ class Assistant:
 
 
     async def ask_stream_async(self, prompt: str) -> AsyncGenerator[str, None]:
-=======
+        """Asynchronously yield partial responses.
+
+        Parameters
+        ----------
+        prompt:
+            User message to send to the model.
+
+        Yields
+        ------
+        str
+            Growing partial response text.
+        """
+
+
+    async def ask_stream_async(self, prompt: str) -> AsyncGenerator[str, None]:
+
     async def ask_stream_async(self, prompt: str) -> Iterable[str]:
 
         """Asynchronously yield partial responses."""
+
 
         kwargs: Dict[str, Any] = {
             "model": self.model,
@@ -206,8 +328,12 @@ class Assistant:
 
 
 
+__all__ = ["Assistant", "ModelName", "Role", "Context"]
+
+
 __all__ = ["Assistant", "ModelName"]
-=======
+
 __all__ = ["Assistant"]
+
 
 
