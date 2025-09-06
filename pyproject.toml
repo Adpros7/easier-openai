@@ -1,14 +1,27 @@
 [project]
 name = "easy-gpt"
+
 version = "0.2.1"
 description = "Lightweight typed wrapper around the OpenAI Responses API"
 readme = "README.md"
+
+
+version = "0.2.0"
+description = "Lightweight typed wrapper around the OpenAI responses API"
+readme = "README.md"
+
+version = "0.1.0"
+description = "Lightweight wrapper around the OpenAI responses API"
+
+
 requires-python = ">=3.10"
 dependencies = [
     "openai>=1.0.0",
 ]
+
 keywords = ["openai", "assistant", "typing", "literal"]
 license = {text = "MIT"}
+
 
 [build-system]
 requires = ["setuptools>=61.0"]
