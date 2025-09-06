@@ -1,6 +1,43 @@
 from __future__ import annotations
 
 import gc
+
+from dataclasses import dataclass, field
+from typing import Any, AsyncGenerator, Dict, Generator, List, Literal, Optional
+
+from openai import AsyncOpenAI, OpenAI
+
+# Reuse clients to avoid repeated HTTP setup overhead
+_SYNC_CLIENT: OpenAI = OpenAI()
+_ASYNC_CLIENT: AsyncOpenAI = AsyncOpenAI()
+
+# Commonly used OpenAI responses models for IDE auto-complete
+ModelName = Literal["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1"]
+
+
+@dataclass(slots=True)
+class Assistant:
+    """Wrapper around the OpenAI Responses API."""
+
+    system_prompt: str
+    model: ModelName | str = "gpt-4o-mini"
+    api_key: Optional[str] = None
+    tools: List[Dict[str, Any]] = field(default_factory=list)
+    use_context: bool = False
+
+    client: OpenAI = field(init=False)
+    async_client: AsyncOpenAI = field(init=False)
+    context: Optional[Dict[str, List[str]]] = field(init=False)
+
+    def __post_init__(self) -> None:
+        if self.api_key:
+            self.client = OpenAI(api_key=self.api_key)
+            self.async_client = AsyncOpenAI(api_key=self.api_key)
+        else:
+            self.client = _SYNC_CLIENT
+            self.async_client = _ASYNC_CLIENT
+        self.context = {"user": [], "assistant": []} if self.use_context else None
+=======
 from typing import Any, Dict, Iterable, List, Optional
 
 from openai import AsyncOpenAI, OpenAI
@@ -43,6 +80,7 @@ class Assistant:
             {"user": [], "assistant": []} if use_context else None
         )
 
+
     # ------------------------------------------------------------------
     # Configuration helpers
     # ------------------------------------------------------------------
@@ -79,7 +117,11 @@ class Assistant:
 
         return text
 
+
+    def ask_stream(self, prompt: str) -> Generator[str, None, None]:
+=======
     def ask_stream(self, prompt: str) -> Iterable[str]:
+
         """Yield partial responses as they stream in."""
 
         kwargs: Dict[str, Any] = {
@@ -125,7 +167,11 @@ class Assistant:
 
         return text
 
+
+    async def ask_stream_async(self, prompt: str) -> AsyncGenerator[str, None]:
+=======
     async def ask_stream_async(self, prompt: str) -> Iterable[str]:
+
         """Asynchronously yield partial responses."""
 
         kwargs: Dict[str, Any] = {
@@ -159,5 +205,9 @@ class Assistant:
         gc.collect()
 
 
+
+__all__ = ["Assistant", "ModelName"]
+=======
 __all__ = ["Assistant"]
+
 

@@ -14,12 +14,23 @@ chatting with OpenAI models simple and flexible.
 - Context tracking and simple garbage collection using `clear_context`.
 - API key pulled from the environment when not supplied explicitly.
 
+- Typed model hints via `ModelName` literals and faster startup thanks to
+  shared OpenAI clients and `dataclass` slots.
+=======
+
 ## Quick start
 
 ```python
+
+from easy_gpt import Assistant, ModelName
+
+# IDEs will offer suggestions for ModelName values
+assistant = Assistant(system_prompt="You are helpful.", model="gpt-4o-mini")
+=======
 from easy_gpt import Assistant
 
 assistant = Assistant(system_prompt="You are helpful.")
+
 print(assistant.ask("Hello, world!"))
 
 for partial in assistant.ask_stream("Write a limerick about Python"):
@@ -39,5 +50,10 @@ async def main():
 
 asyncio.run(main())
 ```
+
+## License
+
+MIT
+=======
 
 
