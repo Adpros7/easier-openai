@@ -40,7 +40,4 @@ async def main():
 asyncio.run(main())
 ```
 
-## License
-
-MIT
 
