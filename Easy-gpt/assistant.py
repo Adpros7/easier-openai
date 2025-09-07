@@ -77,14 +77,18 @@ class Assistant:
     ) -> Any:
 
         # build params
-        params = {
-            "id": id,
-            "tools": tools,
-            "store": store_id,
-            "max_output_tokens": max_output_tokens,
-            "return_full_response": return_full_response,
-        }
-        clean_params = {k: v for k, v in params.items() if v is not None}
+        params = {}
+
+        # conversation handling
+        if id:  # continue existing convo
+            params["conversation"] = id
+        # else: omit 'conversation' so backend starts fresh if store=True
+
+        if store_id is not None:
+            params["store"] = store_id
+        if max_output_tokens is not None:
+            params["max_output_tokens"] = max_output_tokens
+        
 
         # handle built-in toggles as tool objects
         built_in_tools = []
@@ -99,19 +103,22 @@ class Assistant:
 
         # merge built-ins with custom tools if any
         if built_in_tools or tools:
-            clean_params["tools"] = (tools or []) + built_in_tools
+            tools_list = [tools] if isinstance(tools, dict) else (tools or [])
+            params["tools"] = tools_list + built_in_tools
 
         # create response
         response = self.client.responses.create(
             model=self.model,
             input=input,
-            **clean_params
+            instructions=self.system_prompt,
+            **params
         )
 
         # return mode
         if return_full_response:
             return response
-        return [response.output_text, response.id]
+        return [response.output_text, response.conversation]
+
 
     def update_assistant(self, what_to_change: Literal["model", "system_prompt", "temperature", "reasoning_effort", "summary_length", "function_call_list"], new_value):
         if what_to_change == "model":
@@ -143,9 +150,21 @@ class Assistant:
 
 
 if __name__ == "__main__":
-    bob = Assistant(api_key=None, model="gpt-5-nano",
+    bob = Assistant(api_key=None, model="gpt-4o",
                     system_prompt="You are a helpful assistant.")
+
+    conv_id = None
     while True:
         user_input = input("User: ")
-        response = bob.chat(input=user_input, store_id=True)
+        # Only send id if it's valid
+        if conv_id:
+            response = bob.chat(input=user_input, id=conv_id, store_id=True)
+            conv_id = response[1]
+        else:
+            response = bob.chat(input=user_input, store_id=True, return_full_response=True)
+            print (response)
+            conv_id = response[1]
+
         print("Assistant:", response[0])
+        print("Conv ID:", response[1])
+        conv_id = response[1]
