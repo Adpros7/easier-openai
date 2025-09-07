@@ -64,60 +64,9 @@ class Assistant:
 
     def chat(
         self,
-        input: str = "",
-        id: str | None = None,
-        web_search: bool | None = None,
-        file_search: str | bytes | None = None,
-        code_interpreter: bool | None = None,
-        image_generation: bool | None = None,
-        tools: ToolSpec | None = None,   # expects structured tools
-        store_id: bool | None = None,
-        max_output_tokens: int | None = None,
-        return_full_response: bool | None = None
-    ) -> Any:
-
-        # build params
-        params = {}
-
-        # conversation handling
-        if id:  # continue existing convo
-            params["conversation"] = id
-        # else: omit 'conversation' so backend starts fresh if store=True
-
-        if store_id is not None:
-            params["store"] = store_id
-        if max_output_tokens is not None:
-            params["max_output_tokens"] = max_output_tokens
-        
-
-        # handle built-in toggles as tool objects
-        built_in_tools = []
-        if web_search:
-            built_in_tools.append({"type": "web_search"})
-        if code_interpreter:
-            built_in_tools.append({"type": "code_interpreter"})
-        if file_search:
-            built_in_tools.append({"type": "file_search"})
-        if image_generation:
-            built_in_tools.append({"type": "image_generation"})
-
-        # merge built-ins with custom tools if any
-        if built_in_tools or tools:
-            tools_list = [tools] if isinstance(tools, dict) else (tools or [])
-            params["tools"] = tools_list + built_in_tools
-
-        # create response
-        response = self.client.responses.create(
-            model=self.model,
-            input=input,
-            instructions=self.system_prompt,
-            **params
-        )
-
-        # return mode
-        if return_full_response:
-            return response
-        return [response.output_text, response.conversation]
+        input: str,
+        conv_id: str | None = None,
+    ): pass
 
 
     def update_assistant(self, what_to_change: Literal["model", "system_prompt", "temperature", "reasoning_effort", "summary_length", "function_call_list"], new_value):
