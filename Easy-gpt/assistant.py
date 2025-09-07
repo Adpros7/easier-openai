@@ -14,14 +14,13 @@ class Assistant:
         """Initialize the Assistant with configuration parameters. ONLY USE REASONING  WITH GPT-5 and o MODELS."""
         self.model = model
         if not api_key:
-            raise ValueError("API key is required")
-        if api_key.startswith("sk-"):
-            self.api_key = api_key
-        elif os.getenv(api_key):
-            self.api_key = os.getenv(api_key)
+            if not getenv("OPENAI_API_KEY"):
+                raise ValueError(
+                    "No API key provided. Please set the OPENAI_API_KEY environment variable or provide an api_key argument.")
+            else:   
+                self.api_key = getenv("OPENAI_API_KEY")
         else:
-            raise ValueError("Invalid API key or environment variable name")
-
+            self.api_key = api_key
         self.system_prompt = system_prompt
         self.temperature = temperature
         self.reasoning_effort = reasoning_effort
@@ -89,7 +88,7 @@ class Assistant:
 
 
 if __name__ == "__main__":
-    bob = Assistant(api_key=dotenv.get_key(r"C:\Users\prani\OneDrive\Desktop\Coding\AI\ChatPPT\ChattGpt-with live video\API_KEY.env", "OPENAI_API_KEY"), model="gpt-5-nano", system_prompt="You are a helpful assistant." )
+    bob = Assistant(api_key=None, model="gpt-5-nano", system_prompt="You are a helpful assistant." )
     while True:
         user_input = input("User: ")
         response = bob.chat(input=user_input, store_id=True)
