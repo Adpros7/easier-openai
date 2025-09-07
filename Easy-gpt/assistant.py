@@ -38,9 +38,24 @@ class Assistant:
 
         self.client = OpenAI(api_key=self.api_key)
 
-    def chat(self, input: str = "", id: str | None = None, tools: Literal["web search", "code interpreter", "file search", "image generation"] | None = None, store_id: bool = False, return_full_response: bool = False) -> Any:
-        pass
-       
+    def chat(self, input: str = "", id: str | None = None, tools: Literal["web search", "code interpreter", "file search", "image generation"] | None = None, store_id: bool | None = None, max_output_tokens: int | None = None, return_full_response: bool | None = None) -> Any:
+        params = {"id": id,
+                  "tools": tools,
+                  "store": store_id,
+                  "max_output_tokens": max_output_tokens,
+                  "return_full_response": return_full_response}
+        clean_params = {k: v for k, v in params.items() if v is not None}
+        
+        response = self.client.responses.create(
+            model=self.model,
+            input=input,
+            **clean_params
+        )
+        
+        if return_full_response:
+            return response
+        else:
+            return [response.output_text, response.id]
             
 
     def update_assistant(self, what_to_change: Literal["model", "system_prompt", "temperature", "reasoning_effort", "summary_length", "function_call_list"], new_value):
@@ -73,11 +88,9 @@ class Assistant:
 
 
 
-bob = Assistant(api_key=dotenv.get_key(r"C:\Users\prani\OneDrive\Desktop\Coding\AI\ChatPPT\ChattGpt-with live video\API_KEY.env", "OPENAI_API_KEY"), model="gpt-5-nano", system_prompt="You are a helpful assistant." )
-while True:
-    user_input = input("User: ")
-    if user_input.lower() in ["exit", "quit"]:
-        break
-    response = bob.chat(input=user_input, store_id=True)
-    print("Assistant:", response[0])
-    print("Response ID:", response[1])
+if __name__ == "__main__":
+    bob = Assistant(api_key=dotenv.get_key(r"C:\Users\prani\OneDrive\Desktop\Coding\AI\ChatPPT\ChattGpt-with live video\API_KEY.env", "OPENAI_API_KEY"), model="gpt-5-nano", system_prompt="You are a helpful assistant." )
+    while True:
+        user_input = input("User: ")
+        response = bob.chat(input=user_input, store_id=True)
+        print("Assistant:", response[0])
