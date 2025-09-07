@@ -1,29 +1,37 @@
 name: Auto Pull & Push
 
 on:
-  push:   # Runs on every commit pushed to any branch
+  push:
     branches:
       - "**"
 
+permissions:
+  contents: write  # let GITHUB_TOKEN push commits
+
 jobs:
   sync:
+    if: github.actor != 'github-actions[bot]'  # avoid infinite loop
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
+      - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # needed for pull/push
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Configure git
+      - name: Git identity
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Pull latest changes
+      - name: Ensure push auth
         run: |
-          git pull origin ${{ github.ref_name }} --rebase
+          git remote set-url origin \
+            https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
 
-      - name: Push changes
-        run: |
-          git push origin ${{ github.ref_name }}
+      - name: Pull latest
+        run: git pull origin ${{ github.ref_name }} --rebase
+
+      - name: Push back
+        run: git push origin ${{ github.ref_name }}
