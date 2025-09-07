@@ -35,7 +35,7 @@ class CustomToolInputFormat:
     def to_dict(self) -> ToolSpec:
         return self.tool
 class Assistant:
-    def __init__(self, api_key: str | None, model: ResponsesModel, system_prompt: str = "", temperature: float | None = None, reasoning_effort: Literal["minimal", "low", "medium", "high"] = "medium", summary_length: Literal["auto", "concise", "detailed"] = "auto", function_call_list: None | ToolSpec = None):
+    def __init__(self, api_key: str | None, model: ResponsesModel, system_prompt: str = "", temperature: float | None = None, reasoning_effort: Literal["minimal", "low", "medium", "high"] = "medium", summary_length: Literal["auto", "concise", "detailed"] = "auto"):
         """Initialize the Assistant with configuration parameters. ONLY USE REASONING  WITH GPT-5 and o MODELS."""
         self.model = model
         if not api_key:
@@ -58,7 +58,7 @@ class Assistant:
 
         else:
             self.temperature = temperature
-        self.function_call_list = function_call_list or []
+
 
         self.client = OpenAI(api_key=self.api_key)
 
@@ -70,7 +70,7 @@ class Assistant:
         file_search: str | bytes | None = None,
         code_interpreter: bool | None = None,
         image_generation: bool | None = None,
-        tools: list[dict] | None = None,   # expects structured tools
+        tools: ToolSpec | None = None,   # expects structured tools
         store_id: bool | None = None,
         max_output_tokens: int | None = None,
         return_full_response: bool | None = None
