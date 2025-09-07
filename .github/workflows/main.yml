@@ -1,0 +1,29 @@
+name: Auto Pull & Push
+
+on:
+  push:   # Runs on every commit pushed to any branch
+    branches:
+      - "**"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # needed for pull/push
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Pull latest changes
+        run: |
+          git pull origin ${{ github.ref_name }} --rebase
+
+      - name: Push changes
+        run: |
+          git push origin ${{ github.ref_name }}
