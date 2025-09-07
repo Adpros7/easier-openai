@@ -65,66 +65,53 @@ class Assistant:
     def chat(
         self,
         input: str = "",
-        conversation: str | None = None,           # was `id`; Responses expects `conversation`
-        enable_web_search: bool | None = None,     # ignored; not an official tool in Responses
-        file_search: bool | None = None,           # enable the tool (boolean)
-        code_interpreter: bool | None = None,      # enable the tool (boolean)
-        image_generation: bool | None = None,      # ignored; not a Responses tool
-        tools: list[Tool] | None = None,           # must be a list
-        store: bool | None = None,
+        id: str | None = None,
+        web_search: bool | None = None,
+        file_search: str | bytes | None = None,
+        code_interpreter: bool | None = None,
+        image_generation: bool | None = None,
+        tools: ToolSpec | None = None,   # expects structured tools
+        store_id: bool | None = None,
         max_output_tokens: int | None = None,
-        upload_files: Iterable[tuple[str, bytes]] | None = None,  # (filename, data)
         return_full_response: bool | None = None
     ) -> Any:
-        """
-        Create a Responses API call with optional tools and file uploads.
-        - `conversation`: continue a stored conversation id (use with store=True).
-        - `file_search` / `code_interpreter`: toggles for official tools.
-        - `upload_files`: iterable of (filename, bytes) to attach as input files.
-        - `return_full_response`: if True, return SDK object. Else [text, id].
-        """
-        # Assemble tool list
-        merged_tools: list[Tool] = []
-        if tools:
-            if not isinstance(tools, list):
-                raise TypeError("`tools` must be a list[dict].")
-            merged_tools.extend(tools)
 
-        if code_interpreter:
-            merged_tools.append({"type": "code_interpreter"})
-        if file_search:
-            merged_tools.append({"type": "file_search"})
-
-        # Build input parts
-        input_parts: list[dict[str, Any]] = [{"type": "input_text", "text": input}]
-
-        # Optional file uploads become input parts
-        if upload_files:
-            for fname, data in upload_files:
-                f = self.client.files.create(file=(fname, data), purpose="assistants")
-                input_parts.append({"type": "input_file", "file_id": f.id})
-
-        # Build API kwargs, excluding local-only flags
-        api_kwargs: dict[str, Any] = {
-            "model": self.model,
-            "input": input_parts,
+        # build params
+        params = {
+            "id": id,
+            "tools": tools,
+            "store": store_id,
+            "max_output_tokens": max_output_tokens,
+            "return_full_response": return_full_response,
         }
-        if conversation is not None:
-            api_kwargs["conversation"] = conversation
-        if merged_tools:
-            api_kwargs["tools"] = merged_tools
-        if store is not None:
-            api_kwargs["store"] = store
-        if max_output_tokens is not None:
-            api_kwargs["max_output_tokens"] = max_output_tokens
+        clean_params = {k: v for k, v in params.items() if v is not None}
 
-        # Fire the call
-        resp = self.client.responses.create(**api_kwargs)
+        # handle built-in toggles as tool objects
+        built_in_tools = []
+        if web_search:
+            built_in_tools.append({"type": "web_search"})
+        if code_interpreter:
+            built_in_tools.append({"type": "code_interpreter"})
+        if file_search:
+            built_in_tools.append({"type": "file_search"})
+        if image_generation:
+            built_in_tools.append({"type": "image_generation"})
 
-        # Return mode
+        # merge built-ins with custom tools if any
+        if built_in_tools or tools:
+            clean_params["tools"] = (tools or []) + built_in_tools
+
+        # create response
+        response = self.client.responses.create(
+            model=self.model,
+            input=input,
+            **clean_params
+        )
+
+        # return mode
         if return_full_response:
-            return resp
-        return [resp.output_text, resp.id]
+            return response
+        return [response.output_text, response.id]
 
     def update_assistant(self, what_to_change: Literal["model", "system_prompt", "temperature", "reasoning_effort", "summary_length", "function_call_list"], new_value):
         if what_to_change == "model":
