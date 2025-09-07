@@ -10,7 +10,7 @@ import random
 
 
 class Assistant:
-    def __init__(self, api_key: str | None, model: ResponsesModel, system_prompt: str = "", temperature: float | None = None, reasoning_effort: Literal["minimal", "low", "medium", "high"] = "medium", summary_length: Literal["auto", "concise", "detailed"] = "auto", function_call_list: None | list[types.FunctionType] = None):
+    def __init__(self, api_key: str | None, model: ResponsesModel, system_prompt: str = "", temperature: float | None = None, reasoning_effort: Literal["minimal", "low", "medium", "high"] = "medium", summary_length: Literal["auto", "concise", "detailed"] = "auto", function_call_list_with_descriptions: None | dict[Callable, str] = None):
         """Initialize the Assistant with configuration parameters. ONLY USE REASONING  WITH GPT-5 and o MODELS."""
         self.model = model
         if not api_key:
@@ -34,11 +34,11 @@ class Assistant:
             
         else:
             self.temperature = temperature
-        self.function_call_list = function_call_list or []
+        self.function_call_list = function_call_list_with_descriptions or {}
 
         self.client = OpenAI(api_key=self.api_key)
 
-    def chat(self, input: str = "", id: str | None = None, tools: Literal["web search", "code interpreter", "file search", "image generation"] | None = None, store_id: bool | None = None, max_output_tokens: int | None = None, return_full_response: bool | None = None) -> Any:
+    def chat(self, input: str = "", id: str | None = None, web_search: bool | None = None,  store_id: bool | None = None, max_output_tokens: int | None = None, return_full_response: bool | None = None) -> Any:
         params = {"id": id,
                   "tools": tools,
                   "store": store_id,
