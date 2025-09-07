@@ -66,7 +66,33 @@ class Assistant:
         self,
         input: str,
         conv_id: str | None = None,
-    ): pass
+        max_output_tokens: int | None = None,
+        store: bool | None = False,
+        reasoning: Reasoning | None = None,
+        return_full_response: bool = False,
+        
+    ): 
+        """Reasoning can only have gpt 5 and o and temp only to the big boy models"""
+        params ={
+            "model": self.model,
+            "input": input,
+            "instructions": self.system_prompt if self.system_prompt else "",
+            "temperature": self.temperature if self.temperature else None,
+            "reasoning": reasoning if reasoning else (self.reasoning if hasattr(self, 'reasoning') else None),
+            "max_output_tokens": max_output_tokens if max_output_tokens else None,
+            "store": store if store else None,
+            "coversation": conv_id if conv_id else None,
+            "return_full_response": return_full_response
+        }
+        
+        clean_params = {k: v for k, v in params.items() if v is not None}
+        clean_params.__delitem__("return_full_response") 
+        self.client.responses.create(
+            **clean_params
+        
+        )
+        
+        
 
 
     def update_assistant(self, what_to_change: Literal["model", "system_prompt", "temperature", "reasoning_effort", "summary_length", "function_call_list"], new_value):
