@@ -1,1 +1,7 @@
+.gitignore
 /test
+TODO.md
+/.vscode
+gitignore
+settings.json
+.gitignore
