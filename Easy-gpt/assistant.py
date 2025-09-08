@@ -7,6 +7,8 @@ from openai.types.shared_params import ResponsesModel, Reasoning
 from os import getenv
 from typing_extensions import TypedDict
 import random
+from openai.types.responses.response_conversation_param import ResponseConversationParam
+from openai.types.conversations.conversation import Conversation
 
 # e.g. {"type": "string"}
 PropertySpec: TypeAlias = dict[str, str]
@@ -16,6 +18,8 @@ Properties: TypeAlias = dict[str, PropertySpec]
 Parameters: TypeAlias = dict[str, str | Properties | list[str]]
 FunctionSpec: TypeAlias = dict[str, str | Parameters]
 ToolSpec: TypeAlias = dict[str, str | FunctionSpec]
+
+
 class CustomToolInputFormat:
     def __init__(self, fn_name: str, description: str, parameters: list[str], required_params: list[str]):
         self.tool = {
@@ -31,9 +35,10 @@ class CustomToolInputFormat:
             }
         }
 
-    
     def to_dict(self) -> ToolSpec:
         return self.tool
+
+
 class Assistant:
     def __init__(self, api_key: str | None, model: ResponsesModel, system_prompt: str = "", temperature: float | None = None, reasoning_effort: Literal["minimal", "low", "medium", "high"] = "medium", summary_length: Literal["auto", "concise", "detailed"] = "auto"):
         """Initialize the Assistant with configuration parameters. ONLY USE REASONING  WITH GPT-5 and o MODELS."""
@@ -59,41 +64,50 @@ class Assistant:
         else:
             self.temperature = temperature
 
-
         self.client = OpenAI(api_key=self.api_key)
 
     def chat(
         self,
         input: str,
-        conv_id: str | None = None,
+        conv_id: str | None | Conversation = None,
         max_output_tokens: int | None = None,
         store: bool | None = False,
         reasoning: Reasoning | None = None,
         return_full_response: bool = False,
-        
-    ): 
+
+    ):
         """Reasoning can only have gpt 5 and o and temp only to the big boy models"""
-        params ={
+        params = {
             "model": self.model,
             "input": input,
             "instructions": self.system_prompt if self.system_prompt else "",
             "temperature": self.temperature if self.temperature else None,
-            "reasoning": reasoning if reasoning else (self.reasoning if hasattr(self, 'reasoning') else None),
+            "reasoning": reasoning if reasoning else None,
             "max_output_tokens": max_output_tokens if max_output_tokens else None,
             "store": store if store else None,
-            "coversation": conv_id if conv_id else None,
+            "conversation": conv_id if conv_id else None,
             "return_full_response": return_full_response
         }
-        
-        clean_params = {k: v for k, v in params.items() if v is not None}
-        clean_params.__delitem__("return_full_response") 
-        self.client.responses.create(
-            **clean_params
-        
-        )
-        
-        
 
+        clean_params = {k: v for k, v in params.items() if v is not None}
+        clean_params.__delitem__("return_full_response")
+        response = self.client.responses.create(
+            **clean_params
+
+        )
+
+        if return_full_response:
+            return [response, response.output_text]
+
+        else:
+            return [response.output_text, response.conversation]
+
+    def create_conversation(self, return_id_only: bool = False) -> Conversation | str:
+        """Create a new conversation on the OpenAI server."""
+        conversation = self.client.conversations.create()
+        if return_id_only:
+            return conversation.id
+        return conversation
 
     def update_assistant(self, what_to_change: Literal["model", "system_prompt", "temperature", "reasoning_effort", "summary_length", "function_call_list"], new_value):
         if what_to_change == "model":
@@ -128,18 +142,20 @@ if __name__ == "__main__":
     bob = Assistant(api_key=None, model="gpt-4o",
                     system_prompt="You are a helpful assistant.")
 
-    conv_id = None
+    # Create a conversation on the OpenAI server
+    conv_id = bob.create_conversation(return_id_only=True)
+
     while True:
         user_input = input("User: ")
         # Only send id if it's valid
         if conv_id:
-            response = bob.chat(input=user_input, id=conv_id, store_id=True)
+            response = bob.chat(input=user_input, conv_id=conv_id, store=True)
             conv_id = response[1]
         else:
-            response = bob.chat(input=user_input, store_id=True, return_full_response=True)
-            print (response)
+            response = bob.chat(input=user_input, store=True,
+                                return_full_response=True)
+            print(response)
             conv_id = response[1]
 
         print("Assistant:", response[0])
         print("Conv ID:", response[1])
-        conv_id = response[1]
