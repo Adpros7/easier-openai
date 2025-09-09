@@ -103,13 +103,12 @@ class Assistant:
         store: bool | None = False,
         web_search: bool | None = None,
         code_interpreter: bool | None = None,
-        image_generator: bool | None = None,
         file_search: list[str] | None = None,
         if_file_search_max_searches: int | None = 50,
         return_full_response: bool = False,
 
     ):
-        """Reasoning can only have gpt 5 and o and temp only to the big boy models set conv_id to True to use default conversation"""
+        """Reasoning can only have gpt 5 and o and temp only to the big boy models set conv_id to True to use default conversation For image gen True is forced tool call, False is not forced tool call, and None is no tool call"""
         params = {
             "model": self.model,
             "input": input,
@@ -137,8 +136,10 @@ class Assistant:
             params["tools"].append({
                 "type": "file_search",
                 "vector_store_ids": [vstore[0].id],
-                "max_num_results": if_file_search_max_searches if if_file_search_max_searches else 50
+                "max_num_results": if_file_search_max_searches if if_file_search_max_searches else 50,
+                "tool_choice": {}
             })
+            
 
         clean_params = {k: v for k, v in params.items(
         ) if v is not None or "" or [] or {}}
