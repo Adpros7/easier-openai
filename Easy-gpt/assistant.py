@@ -9,6 +9,7 @@ from typing_extensions import TypedDict
 from openai.types.responses.response_conversation_param import ResponseConversationParam
 from openai.types.conversations.conversation import Conversation
 from openai.types.vector_store import VectorStore
+from openai.resources.vector_stores.vector_stores import VectorStores
 
 # e.g. {"type": "string"}
 PropertySpec: TypeAlias = dict[str, str]
@@ -64,31 +65,35 @@ class Assistant:
 
         else:
             self.temperature = temperature
-            
+
         if default_conversation:
             self.conversation = self.create_conversation()
-            self.conversation_id = self.conversation.id # type: ignore
+            self.conversation_id = self.conversation.id  # type: ignore
         else:
             self.conversation = None
             self.conversation_id = None
 
+    def _convert_filepath_to_vector(self, list_of_files: list[str]) -> tuple[VectorStore, VectorStore, VectorStores]:
+        # Create a single vector store and upload all files into it.
+        if not isinstance(list_of_files, list) or len(list_of_files) == 0:
+            raise ValueError(
+                "list_of_files must be a non-empty list of file paths.")
+        for filepath in list_of_files:
+            if not os.path.exists(filepath):
+                raise FileNotFoundError(f"File not found: {filepath}")
+        vector_store_create = self.client.vector_stores.create(
+            name="vector_store")
+        vector_store = self.client.vector_stores.retrieve(
+            vector_store_create.id)
+        vector = self.client.vector_stores
+        for filepath in list_of_files:
+            with open(filepath, "rb") as f:
+                self.client.vector_stores.files.upload_and_poll(
+                    vector_store_id=vector_store_create.id,
+                    file=f
+                )
 
-    def _convert_filepath_to_vector(self, filepath: str) -> VectorStore:
-        # Step 1: create the vector store
-        filename = os.path.basename(filepath)
-        vector_store = self.client.vector_stores.create(name=filename)
-        
-
-        # Step 2: upload the file into the vector store
-        with open(filepath, "rb") as f:
-            self.client.vector_stores.files.upload_and_poll(
-                vector_store_id=vector_store.id,
-                file=f
-            )
-
-        return vector_store
-
-    
+        return vector_store_create, vector_store, vector
 
     def chat(
         self,
@@ -99,7 +104,8 @@ class Assistant:
         web_search: bool | None = None,
         code_interpreter: bool | None = None,
         image_generator: bool | None = None,
-        file_search: list[str | bytes] | None = None,
+        file_search: list[str] | None = None,
+        if_file_search_max_searches: int | None = 50,
         return_full_response: bool = False,
 
     ):
@@ -111,11 +117,10 @@ class Assistant:
             "temperature": self.temperature if self.temperature else None,
             "max_output_tokens": max_output_tokens if max_output_tokens else None,
             "store": store if store else None,
-            "conversation": conv_id if conv_id is str else None,
-            "return_full_response": return_full_response,
+            "conversation": conv_id if isinstance(conv_id, str) else None,
             "tools": []
         }
-        
+
         if params["conversation"] is None:
             if conv_id is True:
                 params["conversation"] = self.conversation_id
@@ -123,20 +128,30 @@ class Assistant:
                 params["conversation"] = conv_id.id
             else:
                 params["conversation"] = None
-                
+
         if web_search:
             params["tools"].append({"type": "web_search"})
-        
-        clean_params = {k: v for k, v in params.items() if v is not None or "" or [] or {}}
-        clean_params.__delitem__("return_full_response")
+
+        if file_search:
+            vstore = self._convert_filepath_to_vector(file_search)
+            params["tools"].append({
+                "type": "file_search",
+                "vector_store_ids": [vstore[0].id],
+                "max_num_results": if_file_search_max_searches if if_file_search_max_searches else 50
+            })
+
+        clean_params = {k: v for k, v in params.items(
+        ) if v is not None or "" or [] or {}}
         response = self.client.responses.create(
             **clean_params
 
         )
+        if file_search:
+            vstore[2].delete(vstore[1].id)  # Free up memory
 
         if return_full_response:
             return [response, response.output_text]
-        
+
         else:
             return [response.output_text, response.conversation]
 
@@ -185,7 +200,7 @@ if __name__ == "__main__":
     while True:
         user_input = input("User: ")
         # Only send id if it's valid
-        response = bob.chat(user_input, conv_id=True, web_search=True)
+        response = bob.chat(user_input, conv_id=True, web_search=True, return_full_response=False)
 
         print("Assistant:", response[0])
         print("Conv ID:", response[1])
