@@ -140,6 +140,10 @@ class Assistant:
                 "max_num_results": if_file_search_max_searches if if_file_search_max_searches else 50,
                 "tool_choice": {}
             })
+            
+
+        if code_interpreter:
+            params["tools"].append({"type": "code_interpreter","container": {"type": "auto"}})
 
         clean_params = {k: v for k, v in params.items(
         ) if v is not None or "" or [] or {}}
@@ -297,4 +301,6 @@ if __name__ == "__main__":
 
     # Create a conversation on the OpenAI server
 
-    print(bob.image_generation(prompt="bob the bannana", model="dall-e-3", return_base64=True, make_file=True, file_name_if_make_file="bob_the bannana"))
+    print(bob.chat(
+        "write me a basic python todo app using tkinter and use the python tool return only the script", code_interpreter=True
+    )[0])  # Start chatting!
