@@ -10,6 +10,7 @@ from openai.types.responses.response_conversation_param import ResponseConversat
 from openai.types.conversations.conversation import Conversation
 from openai.types.vector_store import VectorStore
 from openai.resources.vector_stores.vector_stores import VectorStores
+import base64
 
 # e.g. {"type": "string"}
 PropertySpec: TypeAlias = dict[str, str]
@@ -176,7 +177,9 @@ class Assistant:
         n: int = 1,
         moderation: Literal["auto", "low"] | None = None,
         style: Literal["vivid", "natural"] | None = None,
-        returntype: Literal["Base64", "file"] | None = None
+        return_base64: bool = False,
+        make_file: bool  = False,
+        file_name_if_make_file: str = "generated_image",
 
     ):
         """**prompt**
@@ -245,11 +248,19 @@ The style of the generated images. This parameter is only supported for `dall-e-
             raise e
         
         
-        if returntype == "Base64": return img.data[0].b64_json
-        else:
-            with open("generated_image.png", "wb") as f:
-                f.write(img.data[0].b64_json.encode("utf-8"))
-        
+        if return_base64 and not make_file:
+            return img.data[0].b64_json
+        elif make_file and not return_base64:
+            image_data = img.data[0].b64_json
+            with open(file_name_if_make_file, "wb") as f:
+                f.write(base64.b64decode(image_data))
+        else: 
+            image_data = img.data[0].b64_json
+            name = file_name_if_make_file + "." + output_format
+            with open(name, "wb") as f:
+                f.write(base64.b64decode(image_data))
+                
+            return img.data[0].b64_json
 
     def update_assistant(self, what_to_change: Literal["model", "system_prompt", "temperature", "reasoning_effort", "summary_length", "function_call_list"], new_value):
         if what_to_change == "model":
@@ -286,4 +297,4 @@ if __name__ == "__main__":
 
     # Create a conversation on the OpenAI server
 
-    print(bob.image_generation(prompt="A cat on a skateboard", model="dall-e-2"))
+    print(bob.image_generation(prompt="bob the bannana", model="dall-e-3", return_base64=True, make_file=True, file_name_if_make_file="bob_the bannana"))
