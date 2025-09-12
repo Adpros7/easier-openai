@@ -161,7 +161,7 @@ class Assistant:
             return [response, response.output_text]
 
         else:
-            return [response.output_text, response.conversation]
+            return response.output_text
 
     def create_conversation(self, return_id_only: bool = False) -> Conversation | str:
         """Create a new conversation on the OpenAI server."""
