@@ -105,6 +105,7 @@ class Assistant:
         web_search: bool | None = None,
         code_interpreter: bool | None = None,
         file_search: list[str] | None = None,
+        tools_required: Literal["none", "auto", "required"] = "auto",
         if_file_search_max_searches: int | None = 50,
         return_full_response: bool = False,
 
@@ -118,7 +119,8 @@ class Assistant:
             "max_output_tokens": max_output_tokens if max_output_tokens else None,
             "store": store if store else None,
             "conversation": conv_id if isinstance(conv_id, str) else None,
-            "tools": []
+            "tools": [],
+            "tool_choice": tools_required
         }
 
         if params["conversation"] is None:
@@ -137,16 +139,16 @@ class Assistant:
             params["tools"].append({
                 "type": "file_search",
                 "vector_store_ids": [vstore[0].id],
-                "max_num_results": if_file_search_max_searches if if_file_search_max_searches else 50,
-                "tool_choice": {}
+                "max_num_results": if_file_search_max_searches if if_file_search_max_searches else 50
             })
-            
 
         if code_interpreter:
-            params["tools"].append({"type": "code_interpreter","container": {"type": "auto"}})
+            params["tools"].append(
+                {"type": "code_interpreter", "container": {"type": "auto"}})
 
         clean_params = {k: v for k, v in params.items(
         ) if v is not None or "" or [] or {}}
+
         response = self.client.responses.create(
             **clean_params
 
@@ -182,7 +184,7 @@ class Assistant:
         moderation: Literal["auto", "low"] | None = None,
         style: Literal["vivid", "natural"] | None = None,
         return_base64: bool = False,
-        make_file: bool  = False,
+        make_file: bool = False,
         file_name_if_make_file: str = "generated_image",
 
     ):
@@ -234,36 +236,35 @@ The style of the generated images. This parameter is only supported for `dall-e-
             "moderation": moderation,
             "style": style,
             "response_format": "b64_json" if model != "gpt-image-1" else None,
-            
+
 
 
         }
 
         clean_params = {k: v for k, v in params.items(
         ) if v is not None or "" or [] or {}}
-        
+
         try:
             img = self.client.images.generate(
                 **clean_params
 
             )
-            
+
         except Exception as e:
             raise e
-        
-        
+
         if return_base64 and not make_file:
             return img.data[0].b64_json
         elif make_file and not return_base64:
             image_data = img.data[0].b64_json
             with open(file_name_if_make_file, "wb") as f:
                 f.write(base64.b64decode(image_data))
-        else: 
+        else:
             image_data = img.data[0].b64_json
             name = file_name_if_make_file + "." + output_format
             with open(name, "wb") as f:
                 f.write(base64.b64decode(image_data))
-                
+
             return img.data[0].b64_json
 
     def update_assistant(self, what_to_change: Literal["model", "system_prompt", "temperature", "reasoning_effort", "summary_length", "function_call_list"], new_value):
@@ -302,5 +303,5 @@ if __name__ == "__main__":
     # Create a conversation on the OpenAI server
 
     print(bob.chat(
-        "write me a basic python todo app using tkinter and use the python tool return only the script", code_interpreter=True
+        "read me test.py", file_search=["test.py"], tools_required="required"
     )[0])  # Start chatting!
