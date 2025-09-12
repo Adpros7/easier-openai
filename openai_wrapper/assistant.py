@@ -1,4 +1,3 @@
-import inspect
 import os
 import types
 from typing import Any, Literal, Type, TypeAlias, Unpack
@@ -12,6 +11,8 @@ from openai.types.vector_store import VectorStore
 from openai.resources.vector_stores.vector_stores import VectorStores
 import base64
 from pydantic import BaseModel, ValidationError, create_model
+import inspect
+from openai.types.responses.custom_tool_param import CustomToolParam
 
 # e.g. {"type": "string"}
 PropertySpec: TypeAlias = dict[str, str]
@@ -106,10 +107,11 @@ class Assistant:
         web_search: bool | None = None,
         code_interpreter: bool | None = None,
         file_search: list[str] | None = None,
+        custom_functions: list[types.FunctionType] | list[CustomToolParam] | None = None,
         tools_required: Literal["none", "auto", "required"] = "auto",
         if_file_search_max_searches: int | None = 50,
         return_full_response: bool = False,
-        valid_json: dict | None |None = None,
+        valid_json: dict | None | None = None,
         force_valid_json: bool = False,
 
     ):
@@ -148,11 +150,19 @@ class Assistant:
         if code_interpreter:
             params["tools"].append(
                 {"type": "code_interpreter", "container": {"type": "auto"}})
-            
-        
+
+        if custom_functions is list[types.FunctionType]:
+            for func in custom_functions:
+                nec_dict = self.function_to_tool(func)
+                params["tools"].append(nec_dict)
+
+        if custom_functions is list[CustomToolParam]:
+            for func in custom_functions:
+                params["tools"].append(func)
+
         clean_params = {k: v for k, v in params.items(
         ) if v is not None or "" or [] or {}}
-        
+
         if valid_json and force_valid_json:
 
             def make_model_from_dict(name: str, data: dict[str, Any]) -> type[BaseModel]:
@@ -167,9 +177,11 @@ class Assistant:
             try:
                 JSONModel(**valid_json)
             except ValidationError as e:
-                raise ValueError(f"valid_json does not match schema: {e}") from e
+                raise ValueError(
+                    f"valid_json does not match schema: {e}") from e
 
-            clean_params_filtered = {k: v for k, v in params.items() if v is not None}
+            clean_params_filtered = {k: v for k,
+                                     v in params.items() if v is not None}
             response = self.client.responses.parse(
                 **clean_params_filtered,
                 text_format=JSONModel)   # pass the CLASS, not an instance, not BaseModel
@@ -178,7 +190,7 @@ class Assistant:
                 **clean_params
 
             )
-            
+
         if file_search:
             vstore[2].delete(vstore[1].id)  # Free up memory
 
@@ -356,7 +368,8 @@ The style of the generated images. This parameter is only supported for `dall-e-
             if origin is Union:
                 has_none = any(a is type(None) for a in args)  # noqa: E721
                 non_none = [a for a in args if a is not type(None)]  # noqa: E721
-                any_of = [to_schema(a) for a in non_none] or [{"type": "string"}]
+                any_of = [to_schema(a) for a in non_none] or [
+                    {"type": "string"}]
                 if has_none:
                     any_of.append({"type": "null"})
                 return {"anyOf": any_of}
@@ -421,7 +434,6 @@ The style of the generated images. This parameter is only supported for `dall-e-
             },
         }
 
-
     class __mass_update_helper(TypedDict, total=False):
         model: ResponsesModel
         system_prompt: str
@@ -441,6 +453,8 @@ if __name__ == "__main__":
 
     # Create a conversation on the OpenAI server
 
-    print(bob.chat(
-        "read test.py", file_search=["test.py"], tools_required="required"
-    )[0])  
+    def get_goofy_prompt():
+        return "You are a goofy assistant."
+
+    print(bob.chat("get the goofy prompt use tools", custom_functions=[
+          get_goofy_prompt], tools_required="required"))
