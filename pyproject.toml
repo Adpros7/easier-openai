@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "easy-gpt"
+version = "0.1.0"
+description = "Lightweight helpers around OpenAI's Python SDK (Responses, Conversations, Vector Stores, Images)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+keywords = ["openai", "responses", "chat", "ai", "assistant", "images"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+]
+dependencies = [
+  "openai>=1.43.0",
+  "typing_extensions>=4.7.0",
+]
+
+[project.urls]
+Homepage = ""
+
+[tool.setuptools]
+packages = ["Easy-gpt"]
