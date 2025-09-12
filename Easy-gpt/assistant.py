@@ -1,7 +1,6 @@
 import os
 import types
-from typing import Any, Callable, Literal, Sequence, TypeAlias, Unpack
-import dotenv
+from typing import Literal, TypeAlias, Unpack
 from openai import OpenAI
 from openai.types.shared_params import ResponsesModel, Reasoning
 from os import getenv
@@ -108,12 +107,13 @@ class Assistant:
         tools_required: Literal["none", "auto", "required"] = "auto",
         if_file_search_max_searches: int | None = 50,
         return_full_response: bool = False,
+        valid_json: dict | None = None,
 
     ):
         """Reasoning can only have gpt 5 and o and temp only to the big boy models set conv_id to True to use default conversation For image gen True is forced tool call, False is not forced tool call, and None is no tool call"""
         params = {
             "model": self.model,
-            "input": input,
+            "input": input if not valid_json else input + " ONLY AND ONLY ANSWER IN VALID JSON FORMAT " + str(valid_json),
             "instructions": self.system_prompt if self.system_prompt else "",
             "temperature": self.temperature if self.temperature else None,
             "max_output_tokens": max_output_tokens if max_output_tokens else None,
@@ -145,6 +145,9 @@ class Assistant:
         if code_interpreter:
             params["tools"].append(
                 {"type": "code_interpreter", "container": {"type": "auto"}})
+            
+        if valid_json:
+            params["input"].
 
         clean_params = {k: v for k, v in params.items(
         ) if v is not None or "" or [] or {}}
@@ -303,5 +306,5 @@ if __name__ == "__main__":
     # Create a conversation on the OpenAI server
 
     print(bob.chat(
-        "read me test.py", file_search=["test.py"], tools_required="required"
-    )[0])  # Start chatting!
+        "read test.py", file_search=["test.py"], tools_required="required"
+    )[0])  
