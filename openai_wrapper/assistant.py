@@ -1,6 +1,7 @@
+import inspect
 import os
 import types
-from typing import Literal, TypeAlias, Unpack
+from typing import Any, Literal, Type, TypeAlias, Unpack
 from openai import OpenAI
 from openai.types.shared_params import ResponsesModel, Reasoning
 from os import getenv
@@ -10,6 +11,7 @@ from openai.types.conversations.conversation import Conversation
 from openai.types.vector_store import VectorStore
 from openai.resources.vector_stores.vector_stores import VectorStores
 import base64
+from pydantic import BaseModel, ValidationError, create_model
 
 # e.g. {"type": "string"}
 PropertySpec: TypeAlias = dict[str, str]
@@ -107,7 +109,8 @@ class Assistant:
         tools_required: Literal["none", "auto", "required"] = "auto",
         if_file_search_max_searches: int | None = 50,
         return_full_response: bool = False,
-        valid_json: dict | None = None,
+        valid_json: dict | None |None = None,
+        force_valid_json: bool = False,
 
     ):
         """Reasoning can only have gpt 5 and o and temp only to the big boy models set conv_id to True to use default conversation For image gen True is forced tool call, False is not forced tool call, and None is no tool call"""
@@ -146,14 +149,36 @@ class Assistant:
             params["tools"].append(
                 {"type": "code_interpreter", "container": {"type": "auto"}})
             
-
+        
         clean_params = {k: v for k, v in params.items(
         ) if v is not None or "" or [] or {}}
+        
+        if valid_json and force_valid_json:
 
-        response = self.client.responses.create(
-            **clean_params
+            def make_model_from_dict(name: str, data: dict[str, Any]) -> type[BaseModel]:
+                fields: dict[str, tuple[type, Any]] = {}
+                for k, v in data.items():
+                    fields[k] = (type(v), ...)
+                return create_model(name, **fields)  # type: ignore
 
-        )
+            JSONModel = make_model_from_dict("JSONModel", valid_json)
+
+            # optional pre-validate; avoid creating an instance named "obj"
+            try:
+                JSONModel(**valid_json)
+            except ValidationError as e:
+                raise ValueError(f"valid_json does not match schema: {e}") from e
+
+            clean_params_filtered = {k: v for k, v in params.items() if v is not None}
+            response = self.client.responses.parse(
+                **clean_params_filtered,
+                text_format=JSONModel)   # pass the CLASS, not an instance, not BaseModel
+        if not force_valid_json:
+            response = self.client.responses.create(
+                **clean_params
+
+            )
+            
         if file_search:
             vstore[2].delete(vstore[1].id)  # Free up memory
 
@@ -283,6 +308,119 @@ The style of the generated images. This parameter is only supported for `dall-e-
             self.function_call_list = new_value
         else:
             raise ValueError("Invalid parameter to  change")
+
+    def function_to_tool(self, fn, description: str | None = None) -> dict:
+        """Build an OpenAI Responses tool spec from a Python function."""
+        import inspect
+        import json
+        from typing import Any, get_type_hints, get_origin, get_args, Annotated, Literal, Union
+        try:
+            from enum import Enum
+        except Exception:
+            Enum = None  # type: ignore
+
+        hints = get_type_hints(fn, include_extras=True)
+        sig = inspect.signature(fn)
+
+        def unwrap_annotated(t: Any) -> Any:
+            origin = get_origin(t)
+            if origin is Annotated:
+                args = get_args(t)
+                if args:
+                    return args[0]
+            return t
+
+        def to_schema(t: Any) -> dict:
+            t = unwrap_annotated(t)
+
+            if t is None:
+                return {"type": "string"}  # default when unannotated
+
+            origin = get_origin(t)
+            args = list(get_args(t))
+
+            # Enum types
+            # type: ignore[arg-type]
+            if Enum and inspect.isclass(t) and issubclass(t, Enum):
+                try:
+                    # type: ignore[attr-defined]
+                    return {"enum": [m.value for m in t]}
+                except Exception:
+                    return {"type": "string"}
+
+            # Literal[...] -> enum
+            if origin is Literal:
+                return {"enum": args}
+
+            # Union / Optional
+            if origin is Union:
+                has_none = any(a is type(None) for a in args)  # noqa: E721
+                non_none = [a for a in args if a is not type(None)]  # noqa: E721
+                any_of = [to_schema(a) for a in non_none] or [{"type": "string"}]
+                if has_none:
+                    any_of.append({"type": "null"})
+                return {"anyOf": any_of}
+
+            # Containers
+            if origin in (list, set, tuple):
+                item_t = args[0] if args else str
+                return {"type": "array", "items": to_schema(item_t)}
+
+            if origin in (dict,):
+                # additionalProperties uses value type if available
+                value_t = args[1] if len(args) == 2 else Any
+                return {"type": "object", "additionalProperties": to_schema(value_t)}
+
+            # Primitives
+            if t in (str,):
+                return {"type": "string"}
+            if t in (int,):
+                return {"type": "integer"}
+            if t in (float,):
+                return {"type": "number"}
+            if t in (bool,):
+                return {"type": "boolean"}
+
+            # Fallback
+            return {"type": "string"}
+
+        properties: dict[str, dict] = {}
+        required: list[str] = []
+
+        for name, param in sig.parameters.items():
+            if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+                # *args and **kwargs are not representable in JSON Schema params
+                continue
+
+            ann = hints.get(name, None)
+            schema = to_schema(ann)
+
+            # attach JSON-serializable default if present
+            if param.default is not inspect._empty:
+                try:
+                    json.dumps(param.default)
+                    schema = {**schema, "default": param.default}
+                except Exception:
+                    pass
+            else:
+                required.append(name)
+
+            properties[name] = schema
+
+        return {
+            "type": "function",
+            "function": {
+                "name": fn.__name__,
+                "description": (fn.__doc__ or description or "").strip(),
+                "parameters": {
+                    "type": "object",
+                    "properties": properties,
+                    "required": required,
+                    "additionalProperties": False,
+                },
+            },
+        }
+
 
     class __mass_update_helper(TypedDict, total=False):
         model: ResponsesModel
