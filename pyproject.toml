@@ -21,7 +21,8 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = ""
+Homepage = "https://github.com/Adpros7/Easy-GPT"
+Repository = "https://github.com/Adpros7/Easy-GPT"
 
 [tool.setuptools]
 packages = ["Easy-gpt"]
