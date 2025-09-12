@@ -3,8 +3,8 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "easy-gpt"
-version = "0.1.0"
+name = "openai_wrapper"
+version = "0.1.1"
 description = "Lightweight helpers around OpenAI's Python SDK (Responses, Conversations, Vector Stores, Images)."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -25,4 +25,4 @@ Homepage = "https://github.com/Adpros7/Easy-GPT"
 Repository = "https://github.com/Adpros7/Easy-GPT"
 
 [tool.setuptools]
-packages = ["Easy-gpt"]
+packages = ["openai_wrapper"]

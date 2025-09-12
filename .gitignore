@@ -16,3 +16,10 @@ easy_gpt.egg-info/requires.txt
 easy_gpt.egg-info/SOURCES.txt
 easy_gpt.egg-info/top_level.txt
 .gitignore
+openai_wrapper.egg-info/dependency_links.txt
+openai_wrapper.egg-info/PKG-INFO
+openai_wrapper.egg-info/requires.txt
+openai_wrapper.egg-info/SOURCES.txt
+openai_wrapper.egg-info/top_level.txt
+build/lib/openai_wrapper/__init__.py
+build/lib/openai_wrapper/assistant.py
