@@ -146,8 +146,6 @@ class Assistant:
             params["tools"].append(
                 {"type": "code_interpreter", "container": {"type": "auto"}})
             
-        if valid_json:
-            params["input"].
 
         clean_params = {k: v for k, v in params.items(
         ) if v is not None or "" or [] or {}}
