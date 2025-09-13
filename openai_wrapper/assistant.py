@@ -1,9 +1,13 @@
+from ast import Dict
+from functools import wraps
 import os
 import types
 from typing import Any, Literal, Type, TypeAlias, Unpack
 from openai import OpenAI
+import openai
 from openai.types.shared_params import ResponsesModel, Reasoning
 from os import getenv
+from sqlalchemy import True_
 from typing_extensions import TypedDict
 from openai.types.responses.response_conversation_param import ResponseConversationParam
 from openai.types.conversations.conversation import Conversation
@@ -13,6 +17,7 @@ import base64
 from pydantic import BaseModel, ValidationError, create_model
 import inspect
 from openai.types.responses.custom_tool_param import CustomToolParam
+from ez_openai.decorator import openai_function
 
 # e.g. {"type": "string"}
 PropertySpec: TypeAlias = dict[str, str]
@@ -23,24 +28,6 @@ Parameters: TypeAlias = dict[str, str | Properties | list[str]]
 FunctionSpec: TypeAlias = dict[str, str | Parameters]
 ToolSpec: TypeAlias = dict[str, str | FunctionSpec]
 
-
-class CustomToolInputFormat:
-    def __init__(self, fn_name: str, description: str, parameters: list[str], required_params: list[str]):
-        self.tool = {
-            "type": "function",
-            "function": {
-                "name": fn_name,
-                "description": description,
-                "parameters": {
-                    "type": "object",
-                    "properties": {param: {"type": "string"} for param in parameters},
-                    "required": required_params
-                }
-            }
-        }
-
-    def to_dict(self) -> ToolSpec:
-        return self.tool
 
 
 class Assistant:
@@ -98,6 +85,7 @@ class Assistant:
 
         return vector_store_create, vector_store, vector
 
+
     def chat(
         self,
         input: str,
@@ -107,8 +95,8 @@ class Assistant:
         web_search: bool | None = None,
         code_interpreter: bool | None = None,
         file_search: list[str] | None = None,
-        custom_functions: list[types.FunctionType] | list[CustomToolParam] | None = None,
         tools_required: Literal["none", "auto", "required"] = "auto",
+        custom_tools: list[types.FunctionType] | None = None,
         if_file_search_max_searches: int | None = 50,
         return_full_response: bool = False,
         valid_json: dict | None | None = None,
@@ -150,16 +138,11 @@ class Assistant:
         if code_interpreter:
             params["tools"].append(
                 {"type": "code_interpreter", "container": {"type": "auto"}})
+            
+        if custom_tools:
+            for i in range(len(custom_tools)):
+                params["tools"].append(custom_tools[0]._openai_fn)
 
-        if isinstance(custom_functions, list):
-            if isinstance(custom_functions[0], types.FunctionType):
-                for func in custom_functions:
-                    nec_dict = self.function_to_tool(func)
-                    params["tools"].append(nec_dict)
-
-            else:
-                for func in custom_functions:
-                    params["tools"].append(func)
 
         clean_params = {k: v for k, v in params.items(
         ) if v is not None or "" or [] or {}}
@@ -322,128 +305,6 @@ The style of the generated images. This parameter is only supported for `dall-e-
         else:
             raise ValueError("Invalid parameter to  change")
 
-    def function_to_tool(self, fn, description: str | None = None) -> dict:
-        """Build an OpenAI Responses tool spec from a Python function."""
-        import inspect
-        import json
-        from typing import Any, get_type_hints, get_origin, get_args, Annotated, Literal, Union
-        try:
-            from enum import Enum
-        except Exception:
-            Enum = None  # type: ignore
-
-        hints = get_type_hints(fn, include_extras=True)
-        sig = inspect.signature(fn)
-
-        def unwrap_annotated(t: Any) -> Any:
-            origin = get_origin(t)
-            if origin is Annotated:
-                args = get_args(t)
-                if args:
-                    return args[0]
-            return t
-
-        def to_schema(t: Any) -> dict:
-            t = unwrap_annotated(t)
-
-            if t is None:
-                return {"type": "string"}  # default when unannotated
-
-            origin = get_origin(t)
-            args = list(get_args(t))
-
-            # Enum types
-            # type: ignore[arg-type]
-            if Enum and inspect.isclass(t) and issubclass(t, Enum):
-                try:
-                    # type: ignore[attr-defined]
-                    return {"enum": [m.value for m in t]}
-                except Exception:
-                    return {"type": "string"}
-
-            # Literal[...] -> enum
-            if origin is Literal:
-                return {"enum": args}
-
-            # Union / Optional
-            if origin is Union:
-                has_none = any(a is type(None) for a in args)  # noqa: E721
-                non_none = [a for a in args if a is not type(None)]  # noqa: E721
-                any_of = [to_schema(a) for a in non_none] or [
-                    {"type": "string"}]
-                if has_none:
-                    any_of.append({"type": "null"})
-                return {"anyOf": any_of}
-
-            # Containers
-            if origin in (list, set, tuple):
-                item_t = args[0] if args else str
-                return {"type": "array", "items": to_schema(item_t)}
-
-            if origin in (dict,):
-                # additionalProperties uses value type if available
-                value_t = args[1] if len(args) == 2 else Any
-                return {"type": "object", "additionalProperties": to_schema(value_t)}
-
-            # Primitives
-            if t in (str,):
-                return {"type": "string"}
-            if t in (int,):
-                return {"type": "integer"}
-            if t in (float,):
-                return {"type": "number"}
-            if t in (bool,):
-                return {"type": "boolean"}
-
-            # Fallback
-            return {"type": "string"}
-
-        properties: dict[str, dict] = {}
-        required: list[str] = []
-
-        for name, param in sig.parameters.items():
-            if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
-                # *args and **kwargs are not representable in JSON Schema params
-                continue
-
-            ann = hints.get(name, None)
-            schema = to_schema(ann)
-
-            # attach JSON-serializable default if present
-            if param.default is not inspect._empty:
-                try:
-                    json.dumps(param.default)
-                    schema = {**schema, "default": param.default}
-                except Exception:
-                    pass
-            else:
-                required.append(name)
-
-            properties[name] = schema
-        print({
-            "type": "function",
-            "function": {
-                "name": fn.__name__,
-                "description": (fn.__doc__ or description or "").strip(),
-                "parameters": {
-                    "type": "object",
-                    "properties": properties,
-                    "required": required,
-                },
-            },
-        })
-        return {
-            "type": "function",
-            "function": {
-                "name": fn.__name__,
-                "description": (fn.__doc__ or description or "").strip(),
-                "parameters": {
-                    "type": "object",
-                    "properties": properties,
-                    "required": required,
-                },
-            },
-        }
 
     class __mass_update_helper(TypedDict, total=False):
         model: ResponsesModel
@@ -463,10 +324,10 @@ if __name__ == "__main__":
                     system_prompt="You are a helpful assistant.")
 
     # Create a conversation on the OpenAI server
-
-    def get_goofy_prompt():
+    @openai_function({"prompt": "prompt that returns same thing"}) # type: ignore
+    def get_goofy_prompt(prompt: str) -> str:
         """Get a goofy prompt from the user."""
-        return "You are a goofy assistant."
+        return prompt
 
     print(bob.chat("get the goofy prompt use tools",
-          valid_json={"answer": "str"}, force_valid_json=True))
+          valid_json={"answer": "str"}, force_valid_json=True, custom_tools=[get_goofy_prompt]))
