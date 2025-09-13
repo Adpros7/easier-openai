@@ -468,5 +468,5 @@ if __name__ == "__main__":
         """Get a goofy prompt from the user."""
         return "You are a goofy assistant."
 
-    print(bob.chat("get the goofy prompt use tools", custom_functions=[
-          get_goofy_prompt]))
+    print(bob.chat("get the goofy prompt use tools",
+          valid_json={"answer": "str"}, force_valid_json=True))

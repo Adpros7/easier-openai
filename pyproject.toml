@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "openai_wrapper"
+name = "easy-gpt"
 version = "0.1.1"
 description = "Lightweight helpers around OpenAI's Python SDK (Responses, Conversations, Vector Stores, Images)."
 readme = "README.md"
@@ -12,12 +12,15 @@ license = {text = "MIT"}
 keywords = ["openai", "responses", "chat", "ai", "assistant", "images"]
 classifiers = [
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
   "License :: OSI Approved :: MIT License",
   "Operating System :: OS Independent",
 ]
 dependencies = [
   "openai>=1.43.0",
   "typing_extensions>=4.7.0",
+  "pydantic>=2.0.0",
 ]
 
 [project.urls]
