@@ -10,12 +10,11 @@ from openai.types.vector_store import VectorStore
 from openai.resources.vector_stores.vector_stores import VectorStores
 import base64
 from pydantic import BaseModel, ValidationError, create_model
+import json
 
-# e.g. {"type": "string"}
+
 PropertySpec: TypeAlias = dict[str, str]
-# e.g. {"foo": {"type": "string"}}
 Properties: TypeAlias = dict[str, PropertySpec]
-
 Parameters: TypeAlias = dict[str, str | Properties | list[str]]
 FunctionSpec: TypeAlias = dict[str, str | Parameters]
 ToolSpec: TypeAlias = dict[str, str | FunctionSpec]
@@ -58,46 +57,138 @@ class Assistant:
             self.conversation = None
             self.conversation_id = None
 
+    def _convert_filepath_to_vector(
+        self, list_of_files: list[str]
+    ) -> tuple[VectorStore, VectorStore, VectorStores]:
+        if not isinstance(list_of_files, list) or len(list_of_files) == 0:
+            raise ValueError(
+                "list_of_files must be a non-empty list of file paths.")
+        for filepath in list_of_files:
+            if not os.path.exists(filepath):
+                raise FileNotFoundError(f"File not found: {filepath}")
+
+        vector_store_create = self.client.vector_stores.create(
+            name="vector_store")
+        vector_store = self.client.vector_stores.retrieve(
+            vector_store_create.id)
+        vector = self.client.vector_stores
+        for filepath in list_of_files:
+            with open(filepath, "rb") as f:
+                self.client.vector_stores.files.upload_and_poll(
+                    vector_store_id=vector_store_create.id, file=f
+                )
+        return vector_store_create, vector_store, vector
+
     def chat(
         self,
         input: str,
-        custom_tools: list[Any] | None = None,
+        conv_id: str | None | Conversation | bool = True,
+        max_output_tokens: int | None = None,
+        store: bool | None = False,
+        web_search: bool | None = None,
+        code_interpreter: bool | None = None,
+        file_search: list[str] | None = None,
+        tools_required: Literal["none", "auto", "required"] = "auto",
+        custom_tools: list[tuple[type[BaseModel],
+                                 types.FunctionType]] | None = None,
+        if_file_search_max_searches: int | None = 50,
+        return_full_response: bool = False,
         valid_json: dict | None = None,
         force_valid_json: bool = False,
-    ):
+    ) -> str:
+        tools_defs: list[Any] = []
+        vstore = None
+
+        if web_search:
+            tools_defs.append({"type": "web_search"})
+        if file_search:
+            vstore = self._convert_filepath_to_vector(file_search)
+            tools_defs.append({
+                "type": "file_search",
+                "vector_store_ids": [vstore[0].id],
+                "max_num_results": if_file_search_max_searches if if_file_search_max_searches else 50
+            })
+        if code_interpreter:
+            tools_defs.append({"type": "code_interpreter",
+                              "container": {"type": "auto"}})
+
+        if custom_tools:
+            for schema, fn in custom_tools:
+                tools_defs.append(pydantic_function_tool(schema))
+
         params = {
             "model": self.model,
-            "input": input,
-            "instructions": self.system_prompt,
-            "tools": [],
+            "input": input if not valid_json else input + " ONLY AND ONLY ANSWER IN VALID JSON FORMAT " + str(valid_json),
+            "instructions": self.system_prompt if self.system_prompt else "",
+            "temperature": self.temperature if self.temperature else None,
+            "max_output_tokens": max_output_tokens if max_output_tokens else None,
+            "store": store if store else None,
+            "conversation": None,
+            "tools": tools_defs,
+            "tool_choice": tools_required,
         }
 
-        tools: list = []
-        if custom_tools:
-            for fn in custom_tools:
-                # Instead of giving a plain function, wrap it into a BaseModel schema first
-                class FnModel(BaseModel):
-                    prompt: str
+        if isinstance(conv_id, str):
+            params["conversation"] = conv_id
+        elif conv_id is True:
+            params["conversation"] = self.conversation_id
+        elif isinstance(conv_id, Conversation):
+            params["conversation"] = conv_id.id
 
-                tools.append(pydantic_function_tool(FnModel))
+        clean_params = {k: v for k,
+                        v in params.items() if v is not None and v != []}
 
-        if tools:
-            params["tools"] = tools
+        response = self.client.responses.create(**clean_params)
 
-        clean_params = {k: v for k, v in params.items() if v}
+        if hasattr(response, "tool_calls") and response.tool_calls:
+            tc = response.tool_calls[0]
+            tool_name = tc.function.name
+            raw_args = tc.function.arguments
+            try:
+                args = json.loads(raw_args) if isinstance(
+                    raw_args, str) else raw_args
+            except Exception:
+                args = {}
 
-        if valid_json and force_valid_json:
-            def make_model_from_dict(name: str, data: dict[str, Any]) -> type[BaseModel]:
-                fields: dict[str, tuple[type, Any]] = {}
-                for k, v in data.items():
-                    fields[k] = (type(v), ...)
-                return create_model(name, **fields)  # type: ignore
+            fn_to_run = None
+            if custom_tools:
+                for schema, fn in custom_tools:
+                    if fn.__name__ == tool_name:
+                        fn_to_run = fn
+                        break
 
-            JSONModel = make_model_from_dict("JSONModel", valid_json)
-            response = self.client.responses.parse(
-                **clean_params, text_format=JSONModel)
-        else:
-            response = self.client.responses.create(**clean_params)
+            if fn_to_run is None:
+                tool_output = f"[Error] Tool {tool_name} not found"
+            else:
+                try:
+                    tool_output = fn_to_run(**args)
+                except Exception as e:
+                    tool_output = f"[Error] running {tool_name}: {e}"
+
+            followup_input = (
+                f"The tool `{tool_name}` was called with arguments {args}.\n"
+                f"It returned: {tool_output}\n"
+                "Please continue and answer the original user question using this."
+            )
+
+            second_params = {
+                "model": self.model,
+                "input": followup_input,
+                "instructions": self.system_prompt if self.system_prompt else "",
+                "tools": tools_defs,
+                "tool_choice": tools_required,
+            }
+            if params.get("conversation"):
+                second_params["conversation"] = params["conversation"]
+            if params.get("temperature") is not None:
+                second_params["temperature"] = params["temperature"]
+            if max_output_tokens is not None:
+                second_params["max_output_tokens"] = max_output_tokens
+
+            clean_second = {
+                k: v for k, v in second_params.items() if v is not None and v != []}
+            final_response = self.client.responses.create(**clean_second)
+            return final_response.output_text
 
         return response.output_text
 
@@ -107,19 +198,147 @@ class Assistant:
             return conversation.id
         return conversation
 
+    def image_generation(
+        self,
+        prompt: str,
+        model: Literal["gpt-image-1", "dall-e-2", "dall-e-3"] = "gpt-image-1",
+        background: Literal["transparent", "opaque", "auto"] | None = None,
+        output_format: Literal["webp", "png", "jpeg"] = "png",
+        output_compression: int | None = None,
+        quality: Literal['standard', 'hd', 'low',
+                         'medium', 'high', 'auto'] | None = None,
+        size: Literal['auto', '1024x1024', '1536x1024', '1024x1536',
+                      '256x256', '512x512', '1792x1024', '1024x1792'] | None = None,
+        n: int = 1,
+        moderation: Literal["auto", "low"] | None = None,
+        style: Literal["vivid", "natural"] | None = None,
+        return_base64: bool = False,
+        make_file: bool = False,
+        file_name_if_make_file: str = "generated_image",
+
+    ):
+        """**prompt**
+A text description of the desired image(s). The maximum length is 32000 characters for `gpt-image-1`, 1000 characters for `dall-e-2` and 4000 characters for `dall-e-3`.
+
+**background**
+Allows to set transparency for the background of the generated image(s). This parameter is only supported for `gpt-image-1`. Must be one of `transparent`, `opaque` or `auto` (default value). When `auto` is used, the model will automatically determine the best background for the image.
+
+If `transparent`, the output format needs to support transparency, so it should be set to either `png` (default value) or `webp`.
+
+**model**
+The model to use for image generation. One of `dall-e-2`, `dall-e-3`, or `gpt-image-1`. Defaults to `dall-e-2` unless a parameter specific to `gpt-image-1` is used.
+
+**moderation**
+Control the content-moderation level for images generated by `gpt-image-1`. Must be either `low` for less restrictive filtering or `auto` (default value).
+
+**n**
+The number of images to generate. Must be between 1 and 10. For `dall-e-3`, only `n=1` is supported.
+
+**output_compression**
+The compression level (0-100%) for the generated images. This parameter is only supported for `gpt-image-1` with the `webp` or `jpeg` output formats, and defaults to 100.
+
+**output_format**
+The format in which the generated images are returned. This parameter is only supported for `gpt-image-1`. Must be one of `png`, `jpeg`, or `webp`.
+
+**quality**
+The quality of the image that will be generated.* `auto` (default value) will automatically select the best quality for the given model.
+
+* `high`, `medium` and `low` are supported for `gpt-image-1`.
+* `hd` and `standard` are supported for `dall-e-3`.
+* `standard` is the only option for `dall-e-2`.
+
+**size**
+The size of the generated images. Must be one of `1024x1024`, `1536x1024` (landscape), `1024x1536` (portrait), or `auto` (default value) for `gpt-image-1`, one of `256x256`, `512x512`, or `1024x1024` for `dall-e-2`, and one of `1024x1024`, `1792x1024`, or `1024x1792` for `dall-e-3`.
+
+**style**
+The style of the generated images. This parameter is only supported for `dall-e-3`. Must be one of `vivid` or `natural`. Vivid causes the model to lean towards generating hyper-real and dramatic images. Natural causes the model to produce more natural, less hyper-real looking images.
+"""
+        params = {
+            "model": model,
+            "prompt": prompt,
+            "background": background,
+            "output_format": output_format if model == "gpt-image-1" else None,
+            "output_compression": output_compression,
+            "quality": quality,
+            "size": size,
+            "n": n,
+            "moderation": moderation,
+            "style": style,
+            "response_format": "b64_json" if model != "gpt-image-1" else None,
+
+
+
+        }
+
+        clean_params = {k: v for k, v in params.items(
+        ) if v is not None or "" or [] or {}}
+
+        try:
+            img = self.client.images.generate(
+                **clean_params
+
+            )
+
+        except Exception as e:
+            raise e
+
+        if return_base64 and not make_file:
+            return img.data[0].b64_json
+        elif make_file and not return_base64:
+            image_data = img.data[0].b64_json
+            with open(file_name_if_make_file, "wb") as f:
+                f.write(base64.b64decode(image_data))
+        else:
+            image_data = img.data[0].b64_json
+            name = file_name_if_make_file + "." + output_format
+            with open(name, "wb") as f:
+                f.write(base64.b64decode(image_data))
+
+            return img.data[0].b64_json
+
+    def update_assistant(self, what_to_change: Literal["model", "system_prompt", "temperature", "reasoning_effort", "summary_length", "function_call_list"], new_value):
+        if what_to_change == "model":
+            self.model = new_value
+        elif what_to_change == "system_prompt":
+            self.system_prompt = new_value
+        elif what_to_change == "temperature":
+            self.temperature = new_value
+        elif what_to_change == "reasoning_effort":
+            self.reasoning_effort = new_value
+        elif what_to_change == "summary_length":
+            self.summary_length = new_value
+        elif what_to_change == "function_call_list":
+            self.function_call_list = new_value
+        else:
+            raise ValueError("Invalid parameter to  change")
+
+
+    class __mass_update_helper(TypedDict, total=False):
+        model: ResponsesModel
+        system_prompt: str
+        temperature: float
+        reasoning_effort: Literal["minimal", "low", "medium", "high"]
+        summary_length: Literal["auto", "concise", "detailed"]
+        function_call_list: list[types.FunctionType]
+
+    def mass_update(self, **__mass_update_helper: Unpack[__mass_update_helper]):
+        for key, value in __mass_update_helper.items():
+            setattr(self, key, value)
 
 if __name__ == "__main__":
     bob = Assistant(api_key=None, model="gpt-4o",
                     system_prompt="You are a helpful assistant.")
 
-    def get_goofy_prompt(prompt: str) -> str:
-        return prompt
+    # Define schema + function
+    class GoofyPromptArgs(BaseModel):
+        prompt: str
 
-    print(
-        bob.chat(
-            "get the goofy prompt use tools",
-            valid_json={"answer": "str"},
-            force_valid_json=True,
-            custom_tools=[get_goofy_prompt],
-        )
+    def get_goofy_prompt(prompt: str) -> str:
+        return f"😜 {prompt} 😜"
+
+    # Pass as (schema, function)
+    output = bob.chat(
+        "Ask me to run get_goofy_prompt with prompt \"hello\"",
+        custom_tools=[(GoofyPromptArgs, get_goofy_prompt)]
     )
+    print("Assistant output:", output)
