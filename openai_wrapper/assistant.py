@@ -151,14 +151,15 @@ class Assistant:
             params["tools"].append(
                 {"type": "code_interpreter", "container": {"type": "auto"}})
 
-        if custom_functions is list[types.FunctionType]:
-            for func in custom_functions:
-                nec_dict = self.function_to_tool(func)
-                params["tools"].append(nec_dict)
+        if isinstance(custom_functions, list):
+            if isinstance(custom_functions[0], types.FunctionType):
+                for func in custom_functions:
+                    nec_dict = self.function_to_tool(func)
+                    params["tools"].append(nec_dict)
 
-        if custom_functions is list[CustomToolParam]:
-            for func in custom_functions:
-                params["tools"].append(func)
+            else:
+                for func in custom_functions:
+                    params["tools"].append(func)
 
         clean_params = {k: v for k, v in params.items(
         ) if v is not None or "" or [] or {}}
@@ -419,7 +420,18 @@ The style of the generated images. This parameter is only supported for `dall-e-
                 required.append(name)
 
             properties[name] = schema
-
+        print({
+            "type": "function",
+            "function": {
+                "name": fn.__name__,
+                "description": (fn.__doc__ or description or "").strip(),
+                "parameters": {
+                    "type": "object",
+                    "properties": properties,
+                    "required": required,
+                },
+            },
+        })
         return {
             "type": "function",
             "function": {
@@ -429,7 +441,6 @@ The style of the generated images. This parameter is only supported for `dall-e-
                     "type": "object",
                     "properties": properties,
                     "required": required,
-                    "additionalProperties": False,
                 },
             },
         }
@@ -454,7 +465,8 @@ if __name__ == "__main__":
     # Create a conversation on the OpenAI server
 
     def get_goofy_prompt():
+        """Get a goofy prompt from the user."""
         return "You are a goofy assistant."
 
     print(bob.chat("get the goofy prompt use tools", custom_functions=[
-          get_goofy_prompt], tools_required="required"))
+          get_goofy_prompt]))
