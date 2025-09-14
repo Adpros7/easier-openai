@@ -93,7 +93,7 @@ class Assistant:
                                  types.FunctionType]] | None = None,
         if_file_search_max_searches: int | None = 50,
         return_full_response: bool = False,
-        valid_json: dict | None = None,
+        valid_json: dict  = {},
         force_valid_json: bool = False,
     ) -> str:
         tools_defs: list[Any] = []
@@ -112,9 +112,6 @@ class Assistant:
             tools_defs.append({"type": "code_interpreter",
                               "container": {"type": "auto"}})
 
-        if custom_tools:
-            for schema, fn in custom_tools:
-                tools_defs.append(pydantic_function_tool(schema))
 
         params = {
             "model": self.model,
@@ -126,6 +123,7 @@ class Assistant:
             "conversation": None,
             "tools": tools_defs,
             "tool_choice": tools_required,
+            "valid_json": valid_json
         }
 
         if isinstance(conv_id, str):
@@ -137,58 +135,31 @@ class Assistant:
 
         clean_params = {k: v for k,
                         v in params.items() if v is not None and v != []}
+        if not force_valid_json:
+            try: clean_params.pop("valid_json")
+            except KeyError: pass
+            response = self.client.responses.create(**clean_params)
 
-        response = self.client.responses.create(**clean_params)
-
-        if hasattr(response, "tool_calls") and response.tool_calls:
-            tc = response.tool_calls[0]
-            tool_name = tc.function.name
-            raw_args = tc.function.arguments
-            try:
-                args = json.loads(raw_args) if isinstance(
-                    raw_args, str) else raw_args
-            except Exception:
-                args = {}
-
-            fn_to_run = None
-            if custom_tools:
-                for schema, fn in custom_tools:
-                    if fn.__name__ == tool_name:
-                        fn_to_run = fn
-                        break
-
-            if fn_to_run is None:
-                tool_output = f"[Error] Tool {tool_name} not found"
-            else:
-                try:
-                    tool_output = fn_to_run(**args)
-                except Exception as e:
-                    tool_output = f"[Error] running {tool_name}: {e}"
-
-            followup_input = (
-                f"The tool `{tool_name}` was called with arguments {args}.\n"
-                f"It returned: {tool_output}\n"
-                "Please continue and answer the original user question using this."
+        if force_valid_json:
+            class VALID_JSON(BaseModel):
+                pass
+            for key, value in valid_json.items():
+                setattr(VALID_JSON, key, value)
+            # Build keyword args for parse; do not use positional expansion
+            parse_params = {k: v for k, v in clean_params.items()}
+            try: parse_params.pop("valid_json")
+            except KeyError: pass
+            response = self.client.responses.parse(
+                model=parse_params.pop("model"),
+                input=parse_params.pop("input"),
+                text_format=VALID_JSON,
+                **parse_params,
             )
-
-            second_params = {
-                "model": self.model,
-                "input": followup_input,
-                "instructions": self.system_prompt if self.system_prompt else "",
-                "tools": tools_defs,
-                "tool_choice": tools_required,
-            }
-            if params.get("conversation"):
-                second_params["conversation"] = params["conversation"]
-            if params.get("temperature") is not None:
-                second_params["temperature"] = params["temperature"]
-            if max_output_tokens is not None:
-                second_params["max_output_tokens"] = max_output_tokens
-
-            clean_second = {
-                k: v for k, v in second_params.items() if v is not None and v != []}
-            final_response = self.client.responses.create(**clean_second)
-            return final_response.output_text
+            
+            return response.output_text if response.output_text else str(response)
+            
+        if return_full_response:
+            return response # type: ignore
 
         return response.output_text
 
@@ -330,15 +301,14 @@ if __name__ == "__main__":
                     system_prompt="You are a helpful assistant.")
 
     # Define schema + function
-    class GoofyPromptArgs(BaseModel):
-        prompt: str
 
     def get_goofy_prompt(prompt: str) -> str:
         return f"😜 {prompt} 😜"
 
     # Pass as (schema, function)
     output = bob.chat(
-        "Ask me to run get_goofy_prompt with prompt \"hello\"",
-        custom_tools=[(GoofyPromptArgs, get_goofy_prompt)]
+        "tell me a joke",
+        valid_json={"question": "answer"},
+        force_valid_json=True
     )
     print("Assistant output:", output)
