@@ -23,3 +23,4 @@ openai_wrapper.egg-info/SOURCES.txt
 openai_wrapper.egg-info/top_level.txt
 build/lib/openai_wrapper/__init__.py
 build/lib/openai_wrapper/assistant.py
+/openai_wrapper/tempCodeRunnerFile.py
