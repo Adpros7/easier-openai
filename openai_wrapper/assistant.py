@@ -1,6 +1,7 @@
 import os
 import types
 from typing import Any, Literal, TypeAlias, Unpack
+from playsound import playsound
 from openai import OpenAI, pydantic_function_tool
 from openai.types.shared_params import ResponsesModel, Reasoning
 from os import getenv
@@ -11,6 +12,8 @@ from openai.resources.vector_stores.vector_stores import VectorStores
 import base64
 from pydantic import BaseModel, ValidationError, create_model
 import json
+import simpleaudio as sa
+import stt
 
 
 PropertySpec: TypeAlias = dict[str, str]
@@ -19,7 +22,7 @@ Parameters: TypeAlias = dict[str, str | Properties | list[str]]
 FunctionSpec: TypeAlias = dict[str, str | Parameters]
 ToolSpec: TypeAlias = dict[str, str | FunctionSpec]
 
-
+Number: TypeAlias = int | float
 class Assistant:
     def __init__(
         self,
@@ -32,6 +35,29 @@ class Assistant:
                                   "low", "medium", "high"] = "medium",
         summary_length: Literal["auto", "concise", "detailed"] = "auto",
     ):
+        
+        """
+        Args:
+            api_key (str | None): The API key to use for OpenAI API requests.
+            model (ResponsesModel): The model to use for OpenAI API requests.
+            system_prompt (str, optional): The system prompt to use for OpenAI API requests. Defaults to "".
+            default_conversation (Conversation | bool, optional): The default conversation to use for OpenAI API requests. Defaults to True.
+            temperature (float | None, optional): The temperature to use for OpenAI API requests. Defaults to None.
+            reasoning_effort (Literal["minimal", "low", "medium", "high"], optional): The reasoning effort to use for OpenAI API requests. Defaults to "medium".
+            summary_length (Literal["auto", "concise", "detailed"], optional): The summary length to use for OpenAI API requests. Defaults to "auto".
+        
+        Returns:
+            Assistant: An instance of the Assistant class.
+            
+        Raises:
+            ValueError: If no API key is provided.
+            
+        Examples:
+            bot = Assistant(api_key=None, model="gpt-4o", system_prompt="You are helpful.")
+            
+        
+        """
+        
         self.model = model
         if not api_key:
             if not getenv("OPENAI_API_KEY"):
@@ -96,8 +122,44 @@ class Assistant:
         valid_json: dict  = {},
         force_valid_json: bool = False,
     ) -> str:
+        
+        """
+        This is the chat function
+        
+        Args:
+            input: The input text.
+            conv_id: The conversation ID.
+            max_output_tokens: The maximum output tokens.
+            store: Whether to store the conversation.
+            web_search: Whether to use web search.
+            code_interpreter: Whether to use code interpreter.
+            file_search: The file search.
+            tools_required: The tools required.
+            custom_tools: The custom tools.
+            if_file_search_max_searches: The if file search max searches.
+            return_full_response: Whether to return the full response.
+            valid_json: The valid json.
+            force_valid_json: The force valid json.
+            
+        Returns:
+            The response text.
+            
+        Raises:
+            ValueError: If the conversation ID is invalid.
+            ValueError: If the conversation ID is invalid.
+            
+        Examples:
+            >>> assistant = Assistant(api_key="YOUR_API_KEY", model="gpt-3.5-turbo")
+            >>> response = assistant.chat("Hello, how are you?")
+            >>> print(response)
+            Hello, how are you?
+            
+        ----------
+        """
+        
         tools_defs: list[Any] = []
         vstore = None
+        
 
         if web_search:
             tools_defs.append({"type": "web_search"})
@@ -164,6 +226,15 @@ class Assistant:
         return response.output_text
 
     def create_conversation(self, return_id_only: bool = False) -> Conversation | str:
+        
+        """
+        Create a conversation
+        
+        Args:
+            return_id_only (bool, optional): If True, return only the conversation ID, by default False
+        ----------
+        """
+        
         conversation = self.client.conversations.create()
         if return_id_only:
             return conversation.id
@@ -268,6 +339,29 @@ The style of the generated images. This parameter is only supported for `dall-e-
             return img.data[0].b64_json
 
     def update_assistant(self, what_to_change: Literal["model", "system_prompt", "temperature", "reasoning_effort", "summary_length", "function_call_list"], new_value):
+        
+        """
+        Update the parameters of the assistant.
+
+        Args:
+            what_to_change (Literal["model", "system_prompt", "temperature", "reasoning_effort", "summary_length", "function_call_list"]): The parameter to change.
+            new_value: The new value for the parameter.
+
+        Returns:
+            None
+
+        Raises:
+            ValueError: If the parameter to change is invalid.
+        
+        Examples:
+            >>> assistant.update_assistant("model", "gpt-4o")
+            >>> assistant.update_assistant("system_prompt", "You are a helpful assistant.")
+            >>> assistant.update_assistant("temperature", 0.7)
+            >>> assistant.update_assistant("reasoning_effort", "high")
+            >>> assistant.update_assistant("summary_length", "concise")
+            >>> assistant.update_assistant("function_call_list", [FunctionCall(name="get_current_weather", arguments={"location": "San Francisco"})])
+        """
+        
         if what_to_change == "model":
             self.model = new_value
         elif what_to_change == "system_prompt":
@@ -283,7 +377,165 @@ The style of the generated images. This parameter is only supported for `dall-e-
         else:
             raise ValueError("Invalid parameter to  change")
 
-
+    def text_to_speech(self, input: str,
+                       model: Literal["tts-1", "tts-1-hd", "gpt-4o-mini-tts"] = "tts-1",
+                       voice: str | Literal['alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse', 'marin', 'cedar'] = "alloy",
+                       instructions: str  = "NOT_GIVEN",
+                       response_format:  Literal['mp3', 'opus',
+                                                           'aac', 'flac', 'wav', 'pcm'] = "wav",
+                       speed: float  = 1,
+                       play: bool = True,
+                       save_to_file_path: str | None = None):
+        
+        """
+        Convert text to speech
+        
+        Args:
+            input (str): The text to convert to speech
+            model (Literal['tts-1', 'tts-1-hd', 'gpt-4o-mini-tts'], optional): The model to use. Defaults to "tts-1".
+            voice (str | Literal['alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse', 'marin', 'cedar'], optional): The voice to use. Defaults to "alloy".
+            instructions (str, optional): The instructions to follow. Defaults to "NOT_GIVEN".
+            response_format (Literal['mp3', 'opus', 'aac', 'flac', 'wav', 'pcm'], optional): The response format to use. Defaults to "wav".
+            speed (float, optional): The speed to use. Defaults to 1.
+            play (bool, optional): Whether to play the audio. Defaults to True.
+            save_to_file_path (str | None, optional): The path to save the audio to. Defaults to None.
+            
+        Returns:
+            None
+            
+        Raises:
+            Exception: If the response format is not wav and play is True
+            
+        Examples:
+            ```python
+                assistant.text_to_speech(input="hello", voice="alloy", save_to_file_path="test.wav", response_format="wav")
+            ```
+            
+            ```python
+                assistant.text_to_speech(input="hello", voice="alloy", response_format="wav", play=True)
+            ```
+            
+            ```python
+                assistant.text_to_speech(input="hello", voice="alloy", response_format="wav", play=True, save_to_file_path="test.wav")
+            ```
+        """
+        params = {
+            "input": input,
+            "model": model,
+            "voice": voice,
+            "instructions": instructions,
+            "response_format": response_format,
+            "speed": speed
+        }
+        
+        resp = self.client.audio.speech.create(**params)
+        
+        if save_to_file_path:
+            resp.write_to_file(str(save_to_file_path))
+            if play and response_format == "wav":
+                sa.WaveObject.from_wave_file(str(save_to_file_path)).play()
+                
+        else:
+            if play and response_format == "wav":
+                sa.WaveObject.from_wave_file(resp).play()
+        
+        if response_format != "wav" and play:
+            raise Exception("Cannot play audio if response format is not wav")
+                
+    def full_text_to_speech(self, input: str,
+                            conv_id: str | Conversation | bool | None = True,
+                            max_output_tokens: int | None = None,
+                            store: bool | None = False,
+                            web_search: bool | None = None,
+                            code_interpreter: bool | None = None,
+                            file_search: list[str] | None = None,
+                            tools_required: Literal['none', 'auto', 'required'] = "auto", model: Literal["tts-1", "tts-1-hd", "gpt-4o-mini-tts"] = "tts-1",
+                            voice: str | Literal['alloy', 'ash', 'ballad', 'coral', 'echo',
+                                                 'sage', 'shimmer', 'verse', 'marin', 'cedar'] = "alloy",
+                            instructions: str = "NOT_GIVEN",
+                            response_format:  Literal['mp3', 'opus',
+                                                      'aac', 'flac', 'wav', 'pcm'] = "wav",
+                            speed: float = 1,
+                            play: bool = True,
+                            save_to_file_path: str | None = None):
+        """
+        This is the full text to speech function.
+        Args:
+            input: The input text.
+            conv_id: The conversation ID.
+            max_output_tokens: The maximum output tokens.
+            store: Whether to store the conversation.
+            web_search: Whether to use web search.
+            code_interpreter: Whether to use code interpreter.
+            file_search: The file search.
+            tools_required: The tools required.
+            model: The model.
+            voice: The voice.
+            instructions: The instructions.
+            response_format: The response format.
+            speed: The speed.
+            play: Whether to play the audio.
+            save_to_file_path: The save to file path.
+        
+        Returns:
+            The response.
+            
+        Raises:
+            Exception: If the response format is not wav.
+            
+        Example:
+            ```python
+            >>> assistant.full_text_to_speech("Hello, world!", model="tts-1", voice="alloy", instructions="NOT_GIVEN", response_format="wav", speed=1, play=True, save_to_file_path=None)
+            ```
+            
+            ```python
+            >>> assistant.full_text_to_speech("Hello, world!", model="tts-1", voice="alloy", instructions="NOT_GIVEN", response_format="wav", speed=1, play=True, save_to_file_path="test.wav")
+            ```
+        """
+        param = {
+            "input": input,
+            "conv_id": conv_id,
+            "max_output_tokens": max_output_tokens,
+            "store": store,
+            "web_search": web_search,
+            "code_interpreter": code_interpreter,
+            "file_search": file_search,
+            "tools_required": tools_required
+        }
+        
+        
+        resp = self.chat(**param)
+        
+        say_params = {
+            "model": model,
+            "voice": voice,
+            "instructions": instructions,
+            "response_format": response_format,
+            "speed": speed,
+            "play": play,
+            "save_to_file_path": save_to_file_path,
+            "input": resp
+        }
+        
+        self.text_to_speech(**say_params)
+        
+    def speech_to_text(self, mode: Literal["vad", "keyboard"] | int = "vad" , model: Literal['tiny.en', 'tiny', 'base.en', 'base', 'small.en', 'small', 'medium.en', 'medium', 'large-v1', 'large-v2', 'large-v3', 'large', 'large-v3-turbo', 'turbo'] = "base",
+                       aggressive: int = 2,
+                       chunk_duration_ms: int = 30, log_directions: bool = False):
+        bobert = stt.STT(model=model, aggressive=aggressive, chunk_duration_ms=chunk_duration_ms)
+        
+        if mode == "keyboard":
+            bob = bobert.record_with_keyboard(log=log_directions)
+        elif mode == "vad":
+            bob = bobert.record_with_vad(log=log_directions)
+        
+        elif isinstance(mode, int):
+            bob = bobert.record_for_seconds(mode)
+            
+        return bob
+        
+    
+    
     class __mass_update_helper(TypedDict, total=False):
         model: ResponsesModel
         system_prompt: str
@@ -297,18 +549,9 @@ The style of the generated images. This parameter is only supported for `dall-e-
             setattr(self, key, value)
 
 if __name__ == "__main__":
-    bob = Assistant(api_key=None, model="gpt-4o",
+    bob: Assistant = Assistant(api_key=None, model="gpt-4o",
                     system_prompt="You are a helpful assistant.")
 
     # Define schema + function
 
-    def get_goofy_prompt(prompt: str) -> str:
-        return f"😜 {prompt} 😜"
-
-    # Pass as (schema, function)
-    output = bob.chat(
-        "tell me a joke",
-        valid_json={"question": "answer"},
-        force_valid_json=True
-    )
-    print("Assistant output:", output)
+    bob.text_to_speech(input="hello", voice="alloy", save_to_file_path="test.wav", response_format="wav")
