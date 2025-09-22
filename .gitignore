@@ -24,3 +24,9 @@ openai_wrapper.egg-info/top_level.txt
 build/lib/openai_wrapper/__init__.py
 build/lib/openai_wrapper/assistant.py
 /openai_wrapper/tempCodeRunnerFile.py
+tests/bob_the bannana.png
+tests/generated_image.png
+tests/output.png
+tests/test.md
+tests/test.pdf
+tests/test.py
