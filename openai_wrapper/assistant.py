@@ -1,7 +1,6 @@
 import os
 import types
 from typing import Any, Literal, TypeAlias, Unpack
-from playsound import playsound
 from openai import OpenAI, pydantic_function_tool
 from openai.types.shared_params import ResponsesModel, Reasoning
 from os import getenv
@@ -14,6 +13,7 @@ from pydantic import BaseModel, ValidationError, create_model
 import json
 import simpleaudio as sa
 import stt
+import inspect
 
 
 PropertySpec: TypeAlias = dict[str, str]
@@ -117,13 +117,13 @@ class Assistant:
         input: str,
         conv_id: str | None | Conversation | bool = True,
         max_output_tokens: int | None = None,
-        store: bool | None = False,
-        web_search: bool | None = None,
-        code_interpreter: bool | None = None,
-        file_search: list[str] | None = None,
+        store: bool = False,
+        web_search: bool  = False,
+        code_interpreter: bool  = False,
+        file_search: list[str] = [],
         tools_required: Literal["none", "auto", "required"] = "auto",
-        custom_tools: list[types.FunctionType] | None = None,
-        if_file_search_max_searches: int | None = 50,
+        custom_tools: list[types.FunctionType] = [],
+        if_file_search_max_searches: int | None = None,
         return_full_response: bool = False,
         valid_json: dict  = {},
         force_valid_json: bool = False,
@@ -187,9 +187,41 @@ class Assistant:
         if file_search:
             vector = self._convert_filepath_to_vector(file_search)
             
-            params_for_response["tools"].append({"type": "file_search",
-                                                 "vector_store_ids": vector[1].id,
-                                                 "max_searches": if_file_search_max_searches})
+            if if_file_search_max_searches is None:
+                
+                params_for_response["tools"].append({"type": "file_search",
+                                                    "vector_store_ids": vector[1].id})
+            
+            else:
+                params_for_response["tools"].append({"type": "file_search",
+                                                    "vector_store_ids": vector[1].id,
+                                                    "max_searches": if_file_search_max_searches})
+        
+        if not custom_tools == [] or None:
+            for tool in custom_tools:
+                sig = inspect.signature(tool)
+                required_parameters = []
+                for name, parameter in sig.parameters.items():
+                    if parameter.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY) and parameter.default is inspect.Parameter.empty:
+                        required_parameters.append(name)
+                what = {
+                    "type": "function",
+                    "name": tool.__name__,
+                    "description": tool.__doc__ if tool.__doc__ is not None else tool.__name__ + " is a tool that does something",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "location": {
+                                "type": "string",
+                                "description": "City and country e.g. Bogotá, Colombia",
+                            }
+                        },
+                        "required": required_parameters,
+                        "additionalProperties": False,
+                    },
+                    "strict": True,
+                }
+                params_for_response["tools"].append(tool)
             
         
         try:
