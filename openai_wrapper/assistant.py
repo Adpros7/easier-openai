@@ -22,6 +22,10 @@ Parameters: TypeAlias = dict[str, str | Properties | list[str]]
 FunctionSpec: TypeAlias = dict[str, str | Parameters]
 ToolSpec: TypeAlias = dict[str, str | FunctionSpec]
 
+Optional_Parameters_Description: TypeAlias = dict[str, str]
+"""give a dict like this: {'param1': 'description1', 'param2': 'description2'}"""
+
+
 Number: TypeAlias = int | float
 class Assistant:
     def __init__(
@@ -75,6 +79,9 @@ class Assistant:
         if reasoning_effort and summary_length:
             self.reasoning = Reasoning(
                 effort=reasoning_effort, summary=summary_length)
+        
+        else: 
+            self.reasoning = None
 
         if default_conversation:
             self.conversation = self.create_conversation()
@@ -115,8 +122,7 @@ class Assistant:
         code_interpreter: bool | None = None,
         file_search: list[str] | None = None,
         tools_required: Literal["none", "auto", "required"] = "auto",
-        custom_tools: list[tuple[type[BaseModel],
-                                 types.FunctionType]] | None = None,
+        custom_tools: list[types.FunctionType] | None = None,
         if_file_search_max_searches: int | None = 50,
         return_full_response: bool = False,
         valid_json: dict  = {},
@@ -156,74 +162,45 @@ class Assistant:
             
         ----------
         """
-        
-        tools_defs: list[Any] = []
-        vstore = None
-        
-
-        if web_search:
-            tools_defs.append({"type": "web_search"})
-        if file_search:
-            vstore = self._convert_filepath_to_vector(file_search)
-            tools_defs.append({
-                "type": "file_search",
-                "vector_store_ids": [vstore[0].id],
-                "max_num_results": if_file_search_max_searches if if_file_search_max_searches else 50
-            })
-        if code_interpreter:
-            tools_defs.append({"type": "code_interpreter",
-                              "container": {"type": "auto"}})
-
-
-        params = {
+        convo = self.conversation_id if conv_id is True else conv_id
+        if not convo:
+            convo = False
+        params_for_response = {
+            "input": input if valid_json == {} else input + "RESPOND ONLY IN VALID JSON FORMAT LIKE THIS: " + json.dumps(valid_json),
+            "instructions": self.system_prompt,
+            "conversation": convo,
+            "max_output_tokens": max_output_tokens,
+            "store": store,
             "model": self.model,
-            "input": input if not valid_json else input + " ONLY AND ONLY ANSWER IN VALID JSON FORMAT " + str(valid_json),
-            "instructions": self.system_prompt if self.system_prompt else "",
-            "temperature": self.temperature if self.temperature else None,
-            "max_output_tokens": max_output_tokens if max_output_tokens else None,
-            "store": store if store else None,
-            "conversation": None,
-            "tools": tools_defs,
-            "tool_choice": tools_required,
-            "valid_json": valid_json
+            "reasoning":  self.reasoning if self.reasoning is not None else None,
+            "tools": []
+            
         }
-
-        if isinstance(conv_id, str):
-            params["conversation"] = conv_id
-        elif conv_id is True:
-            params["conversation"] = self.conversation_id
-        elif isinstance(conv_id, Conversation):
-            params["conversation"] = conv_id.id
-
-        clean_params = {k: v for k,
-                        v in params.items() if v is not None and v != []}
-        if not force_valid_json:
-            try: clean_params.pop("valid_json")
-            except KeyError: pass
-            response = self.client.responses.create(**clean_params)
-
-        if force_valid_json:
-            class VALID_JSON(BaseModel):
-                pass
-            for key, value in valid_json.items():
-                setattr(VALID_JSON, key, value)
-            # Build keyword args for parse; do not use positional expansion
-            parse_params = {k: v for k, v in clean_params.items()}
-            try: parse_params.pop("valid_json")
-            except KeyError: pass
-            response = self.client.responses.parse(
-                model=parse_params.pop("model"),
-                input=parse_params.pop("input"),
-                text_format=VALID_JSON,
-                **parse_params,
+        
+        if web_search:
+            params_for_response["tools"].append({"type": "web_search"})
+        
+        if code_interpreter:
+            params_for_response["tools"].append({"type": "code_interpreter",
+                                                 "container": {"type": "auto"}})
+            
+        if file_search:
+            vector = self._convert_filepath_to_vector(file_search)
+            
+            params_for_response["tools"].append({"type": "file_search",
+                                                 "vector_store_ids": vector[1].id,
+                                                 "max_searches": if_file_search_max_searches})
+            
+        
+        try:
+            resp = self.client.responses.create(
+                **params_for_response
             )
-            
-            return response.output_text if response.output_text else str(response)
-            
-        if return_full_response:
-            return response # type: ignore
-
-        return response.output_text
+        
+        except Exception as e:
+            print("Error creating response: \n", e)
+        
+        
 
     def create_conversation(self, return_id_only: bool = False) -> Conversation | str:
         
