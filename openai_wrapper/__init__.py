@@ -12,9 +12,11 @@ Quick start (requires `OPENAI_API_KEY` in your environment):
     print(reply)
 """
 
-from .assistant import Assistant, CustomToolInputFormat
+from sympy import im
+from .assistant import Assistant
+from ez_openai.decorator import openai_function
 
-__all__ = ["Assistant", "CustomToolInputFormat"]
+__all__ = ["Assistant", "openai_function"]
 
 # Expose package version from installed distribution metadata (easy-gpt)
 try:
