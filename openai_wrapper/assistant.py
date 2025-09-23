@@ -1,3 +1,5 @@
+import warnings
+warnings.filterwarnings("ignore")
 import os
 import types
 from typing import Any, Literal, TypeAlias, Unpack
@@ -121,9 +123,10 @@ class Assistant:
         web_search: bool  = False,
         code_interpreter: bool  = False,
         file_search: list[str] = [],
+        if_file_search_max_searches: int | None = None,
         tools_required: Literal["none", "auto", "required"] = "auto",
         custom_tools: list[types.FunctionType] = [],
-        if_file_search_max_searches: int | None = None,
+        if_custom_tools_params_description: Optional_Parameters_Description = {},
         return_full_response: bool = False,
         valid_json: dict  = {},
         force_valid_json: bool = False,
@@ -197,33 +200,6 @@ class Assistant:
                                                     "vector_store_ids": vector[1].id,
                                                     "max_searches": if_file_search_max_searches})
         
-        if not custom_tools == [] or None:
-            for tool in custom_tools:
-                sig = inspect.signature(tool)
-                required_parameters = []
-                for name, parameter in sig.parameters.items():
-                    if parameter.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY) and parameter.default is inspect.Parameter.empty:
-                        required_parameters.append(name)
-                what = {
-                    "type": "function",
-                    "name": tool.__name__,
-                    "description": tool.__doc__ if tool.__doc__ is not None else tool.__name__ + " is a tool that does something",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "location": {
-                                "type": "string",
-                                "description": "City and country e.g. Bogotá, Colombia",
-                            }
-                        },
-                        "required": required_parameters,
-                        "additionalProperties": False,
-                    },
-                    "strict": True,
-                }
-                params_for_response["tools"].append(tool)
-            
-        
         try:
             resp = self.client.responses.create(
                 **params_for_response
@@ -232,8 +208,17 @@ class Assistant:
         except Exception as e:
             print("Error creating response: \n", e)
         
+        finally:
+            if store:
+                self.conversation = resp.conversation
+            
+            if file_search:
+                vector[2].delete(vector[0].id)
         
-
+            if return_full_response:
+                return resp
+            return resp.output_text
+    
     def create_conversation(self, return_id_only: bool = False) -> Conversation | str:
         
         """
@@ -563,4 +548,4 @@ if __name__ == "__main__":
 
     # Define schema + function
 
-    bob.text_to_speech(input="hello", voice="alloy", save_to_file_path="test.wav", response_format="wav")
+    bob.text_to_speech(input="hello", voice="alloy", save_to_file_path=r"C:\Users\prani\OneDrive\Desktop\Coding\AI\ChatPPT\Easy-gpt\tests\test.wav", response_format="wav")

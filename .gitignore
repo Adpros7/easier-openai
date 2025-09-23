@@ -30,3 +30,6 @@ tests/output.png
 tests/test.md
 tests/test.pdf
 tests/test.py
+/tests
+/easy_gpt.egg-info
+/build

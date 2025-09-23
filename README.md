@@ -61,8 +61,8 @@ img_b64 = bot.image_generation(
 
 - Environment variable: `OPENAI_API_KEY` must be set unless you pass `api_key` directly.
 - Requires the OpenAI Python SDK `openai>=1.43.0` (installed automatically).
+- I couldn't do custom function calling yet so for now use [ez-openai](https://github.com/skorokithakis/ez-openai) PyPi: [ez-openai](https://pypi.org/project/ez-openai/)
 
 ## License
 
 MIT
-
