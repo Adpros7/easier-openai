@@ -4,18 +4,24 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "easy-gpt"
-version = "0.1.1"
-description = "Lightweight helpers around OpenAI's Python SDK (Responses, Conversations, Vector Stores, Images)."
+version = "0.2.0"
+description = "Utilities for orchestrating OpenAI chat, tool calling, search, and images from one helper package."
 readme = "README.md"
-requires-python = ">=3.10"
-license = {text = "MIT"}
-keywords = ["openai", "responses", "chat", "ai", "assistant", "images"]
+requires-python = ">=3.13"
+license = {text = "Apache-2.0"}
+authors = [
+  {name = "Easy GPT Maintainers", email = "maintainers@example.com"},
+]
+keywords = ["openai", "assistant", "chat", "responses", "vector", "images"]
 classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: Apache Software License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
-  "License :: OSI Approved :: MIT License",
-  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
   "openai>=1.43.0",
@@ -26,6 +32,8 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/Adpros7/Easy-GPT"
 Repository = "https://github.com/Adpros7/Easy-GPT"
+Documentation = "https://github.com/Adpros7/Easy-GPT"
 
 [tool.setuptools]
 packages = ["openai_wrapper"]
+include-package-data = true

@@ -3,7 +3,7 @@ warnings.filterwarnings("ignore")
 import os
 import types
 from typing import Any, Literal, TypeAlias, Unpack
-from openai import OpenAI, pydantic_function_tool
+from openai import OpenAI
 from openai.types.shared_params import ResponsesModel, Reasoning
 from os import getenv
 from typing_extensions import TypedDict
@@ -11,11 +11,9 @@ from openai.types.conversations.conversation import Conversation
 from openai.types.vector_store import VectorStore
 from openai.resources.vector_stores.vector_stores import VectorStores
 import base64
-from pydantic import BaseModel, ValidationError, create_model
 import json
 import simpleaudio as sa
-import stt
-import inspect
+import openai_stt as stt
 
 
 PropertySpec: TypeAlias = dict[str, str]
