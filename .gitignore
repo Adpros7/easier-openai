@@ -33,3 +33,4 @@ tests/test.py
 /tests
 /easy_gpt.egg-info
 /build
+/.venv
