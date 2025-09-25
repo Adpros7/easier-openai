@@ -3,3 +3,4 @@ simpleaudio
 openai_stt
 typing_extensions
 whisper
+ez-openai

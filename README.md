@@ -1,4 +1,4 @@
-# Easy GPT
+# Easier GPT
 
 Easy GPT offers a light wrapper around the OpenAI Python SDK so you can chat with models, toggle built-in tools, upload reference files, and request images through one unified helper.
 
@@ -12,7 +12,7 @@ Easy GPT offers a light wrapper around the OpenAI Python SDK so you can chat wit
 ## Installation
 
 ```bash
-pip install easy-gpt
+pip install easier-gpt
 ```
 
 Set `OPENAI_API_KEY` in your environment or pass an explicit key when you build the assistant instance.
