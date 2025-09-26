@@ -39,3 +39,7 @@ easier_gpt.egg-info/PKG-INFO
 easier_gpt.egg-info/requires.txt
 easier_gpt.egg-info/SOURCES.txt
 easier_gpt.egg-info/top_level.txt
+/easier_openai.egg-info
+/dist
+.gitignore
+/
