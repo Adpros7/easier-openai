@@ -474,7 +474,7 @@ The style of the generated images. This parameter is only supported for `dall-e-
                                                       'aac', 'flac', 'wav', 'pcm'] = "wav",
                             speed: float = 1,
                             play: bool = True,
-                            save_to_file_path: str | None = None):
+                            save_to_file_path: str | None = None) -> str:
         """
         This is the full text to speech function.
         Args:
@@ -535,6 +535,8 @@ The style of the generated images. This parameter is only supported for `dall-e-
         }
         
         self.text_to_speech(**say_params)
+        
+        return resp
         
     def speech_to_text(self, mode: Literal["vad", "keyboard"] | int = "vad" , model: Literal['tiny.en', 'tiny', 'base.en', 'base', 'small.en', 'small', 'medium.en', 'medium', 'large-v1', 'large-v2', 'large-v3', 'large', 'large-v3-turbo', 'turbo'] = "base",
                        aggressive: int = 2,
