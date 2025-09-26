@@ -237,7 +237,7 @@ class Assistant:
             stob = blib.ask(input)
         
         else:
-            bob = self.asss.create("bob", functions=[that], model=self.model, instructions=self.system_prompt, temprature=tempratures)
+            bob = self.asss.create("bob", functions=[that], model=self.model, instructions=self.system_prompt)
             blib = bob.conversation.create()
             stob = blib.ask(input)
         
