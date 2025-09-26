@@ -12,7 +12,7 @@ Easier OpenAI offers a light wrapper around the OpenAI Python SDK so you can cha
 ## Installation
 
 ```bash
-pip install easier-OpenAI
+pip install easier-openai
 ```
 
 Set `OPENAI_API_KEY` in your environment or pass an explicit key when you build the assistant instance.
@@ -20,7 +20,7 @@ Set `OPENAI_API_KEY` in your environment or pass an explicit key when you build 
 ## Usage Example
 
 ```python
-from openai import Assistant
+from easier_openai import Assistant
 
 assistant = Assistant(model="gpt-4o", system_prompt="You are concise.")
 response_text = assistant.chat("Summarize Rayleigh scattering in one sentence.")

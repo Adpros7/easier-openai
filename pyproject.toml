@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "easier-openai"
-version = "0.2.3"
+version = "0.2.31"
 description = "Utilities for orchestrating OpenAI chat, tool calling, search, audio, and images from one helper package."
 readme = "README.md"
 requires-python = ">=3.13"
@@ -49,5 +49,5 @@ Documentation = "https://github.com/Adpros7/easier-gpt"
 Issues = "https://github.com/Adpros7/easier-gpt/issues"
 
 [tool.setuptools]
-packages = ["openai_wrapper"]
+packages = ["easier_openai"]
 include-package-data = true
