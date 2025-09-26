@@ -3,8 +3,8 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "easier-gpt"
-version = "0.2.2"
+name = "easier-openai"
+version = "0.2.3"
 description = "Utilities for orchestrating OpenAI chat, tool calling, search, audio, and images from one helper package."
 readme = "README.md"
 requires-python = ">=3.13"

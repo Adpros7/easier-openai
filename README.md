@@ -1,6 +1,6 @@
-# Easier GPT
+# Easier OpenAI
 
-Easy GPT offers a light wrapper around the OpenAI Python SDK so you can chat with models, toggle built-in tools, upload reference files, and request images through one unified helper.
+Easier OpenAI offers a light wrapper around the OpenAI Python SDK so you can chat with models, toggle built-in tools, upload reference files, and request images through one unified helper.
 
 ## Highlights
 
@@ -12,7 +12,7 @@ Easy GPT offers a light wrapper around the OpenAI Python SDK so you can chat wit
 ## Installation
 
 ```bash
-pip install easier-gpt
+pip install easier-OpenAI
 ```
 
 Set `OPENAI_API_KEY` in your environment or pass an explicit key when you build the assistant instance.
@@ -20,7 +20,7 @@ Set `OPENAI_API_KEY` in your environment or pass an explicit key when you build 
 ## Usage Example
 
 ```python
-from openai_wrapper import Assistant
+from openai import Assistant
 
 assistant = Assistant(model="gpt-4o", system_prompt="You are concise.")
 response_text = assistant.chat("Summarize Rayleigh scattering in one sentence.")

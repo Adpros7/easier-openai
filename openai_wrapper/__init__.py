@@ -10,15 +10,7 @@ from importlib import metadata as _metadata
 
 from .assistant import Assistant
 
-try:
-    from ez_openai.decorator import openai_function
-except ImportError:  # pragma: no cover - dependency optional at runtime
-    def openai_function(func):
-        raise RuntimeError(
-            "The optional dependency 'ez-openai' is required to use openai_function."
-        )
-
-__all__ = ["Assistant", "openai_function", "__version__"]
+__all__ = ["Assistant", "__version__"]
 
 try:
     __version__ = _metadata.version("easy-gpt")

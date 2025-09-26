@@ -1,12 +1,10 @@
 from turtle import st
 import warnings
-
 from torch import NoneType
 warnings.filterwarnings("ignore")
 import os
 import types
 from typing import Any, Callable, Literal, TypeAlias, Unpack
-from openai import OpenAI
 from openai.types.shared_params import ResponsesModel, Reasoning
 from os import getenv
 from typing_extensions import TypedDict
@@ -19,6 +17,7 @@ import simpleaudio as sa
 import openai_stt as stt
 from ez_openai.decorator import openai_function
 from ez_openai import Assistant as asss
+from openai import OpenAI
 
 
 
@@ -225,23 +224,23 @@ class Assistant:
                 return resp
             return resp.output_text
         
-    def function_chat(self, input: str, func: list[Callable], descriptions: type[dict[str, str]]= dict[str, str], temprature: float | None = None):
-        if temprature is None:
-            tempratures = self.temperature
+    # def function_chat(self, input: str, func: list[Callable], descriptions: type[dict[str, str]]= dict[str, str], temprature: float | None = None):
+    #     if temprature is None:
+    #         tempratures = self.temperature
         
-        that = openai_function(descriptions=descriptions)(func)
-        if tempratures is None:
-            tempratures = None
-            bob = self.asss.create("bob", functions=[that], model=self.model, instructions=self.system_prompt)
-            blib = bob.conversation.create()
-            stob = blib.ask(input)
+    #     that = openai_function(descriptions=descriptions)(func)
+    #     if tempratures is None:
+    #         tempratures = None
+    #         bob = self.asss.create("bob", functions=[that], model=self.model, instructions=self.system_prompt)
+    #         blib = bob.conversation.create()
+    #         stob = blib.ask(input)
         
-        else:
-            bob = self.asss.create("bob", functions=[that], model=self.model, instructions=self.system_prompt)
-            blib = bob.conversation.create()
-            stob = blib.ask(input)
+    #     else:
+    #         bob = self.asss.create("bob", functions=[that], model=self.model, instructions=self.system_prompt)
+    #         blib = bob.conversation.create()
+    #         stob = blib.ask(input)
         
-        return stob
+    #     return stob
         
     def create_conversation(self, return_id_only: bool = False) -> Conversation | str:
         
