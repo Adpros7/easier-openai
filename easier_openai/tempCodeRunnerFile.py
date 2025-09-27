@@ -1,1 +1,1 @@
-import whisper ; print(whisper.available_models())
+ot None

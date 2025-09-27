@@ -1,6 +1,8 @@
+import tempfile
 from turtle import st
 import warnings
-from torch import NoneType
+
+from huggingface_hub import parse_safetensors_file_metadata
 warnings.filterwarnings("ignore")
 import os
 import types
@@ -41,8 +43,8 @@ class Assistant:
         default_conversation: Conversation | bool = True,
         temperature: float | None = None,
         reasoning_effort: Literal["minimal",
-                                  "low", "medium", "high"] = "medium",
-        summary_length: Literal["auto", "concise", "detailed"] = "auto",
+                                  "low", "medium", "high"] | None = None,
+        summary_length: Literal["auto", "concise", "detailed"] | None = None,
     ):
         
         """
@@ -205,6 +207,19 @@ class Assistant:
                                                     "vector_store_ids": vector[1].id,
                                                     "max_searches": if_file_search_max_searches})
         
+        params_for_response = {k: v for k, v in params_for_response.items() if v is not None}
+        
+        if tools_required == "none":
+            params_for_response["tool_choice"] = "none"
+        elif tools_required == "auto":
+            params_for_response["tool_choice"] = "auto"
+        elif tools_required == "required":
+            params_for_response["tool_choice"] = "required"
+        
+        if custom_tools:
+            params_for_response["tools"].append({"type": "custom",})
+        
+        params_for_response = {k: v for k, v in params_for_response.items() if v is not None}
         try:
             resp = self.client.responses.create(
                 **params_for_response
@@ -215,7 +230,7 @@ class Assistant:
         
         finally:
             if store:
-                self.conversation = resp.conversation
+               self.conversation = resp.conversation
             
             if file_search:
                 vector[2].delete(vector[0].id)
@@ -445,16 +460,20 @@ The style of the generated images. This parameter is only supported for `dall-e-
             "speed": speed
         }
         
-        resp = self.client.audio.speech.create(**params)
+        respo = self.client.audio.speech.create(**params)
+        
         
         if save_to_file_path:
-            resp.write_to_file(str(save_to_file_path))
+            respo.write_to_file(str(save_to_file_path))
             if play and response_format == "wav":
                 sa.WaveObject.from_wave_file(str(save_to_file_path)).play()
                 
         else:
             if play and response_format == "wav":
-                sa.WaveObject.from_wave_file(resp).play()
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
+                    respo.write_to_file(f.name)
+                    sa.WaveObject.from_wave_file(f.name).play().wait_done()
+                    os.remove(f.name)
         
         if response_format != "wav" and play:
             raise Exception("Cannot play audio if response format is not wav")
@@ -573,4 +592,4 @@ if __name__ == "__main__":
 
     # Define schema + function
 
-    bob.text_to_speech(input="hello", voice="alloy", save_to_file_path=r"C:\Users\prani\OneDrive\Desktop\Coding\AI\ChatPPT\Easy-gpt\tests\test.wav", response_format="wav")
+    bob.full_text_to_speech(input="hello")
