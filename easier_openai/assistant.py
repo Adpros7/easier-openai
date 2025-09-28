@@ -566,9 +566,9 @@ The style of the generated images. This parameter is only supported for `dall-e-
             "input": resp
         }
 
-        self.text_to_speech(**say_params)
         if print_response:
             print(resp)
+        self.text_to_speech(**say_params)
 
         return resp
 
