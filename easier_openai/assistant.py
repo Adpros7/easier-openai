@@ -1,3 +1,5 @@
+import warnings
+warnings.filterwarnings("ignore")
 
 from openai import OpenAI
 from ez_openai import Assistant as asss
@@ -17,12 +19,10 @@ import types
 import os
 import tempfile
 import time
-import warnings
-from playsound import playsound
+from pygame import mixer
 
 from huggingface_hub import parse_safetensors_file_metadata
 from syntaxmod import wait_until
-warnings.filterwarnings("ignore")
 
 
 PropertySpec: TypeAlias = dict[str, str]
@@ -86,6 +86,7 @@ class Assistant:
         self.temperature = temperature
         self.reasoning_effort = reasoning_effort
         self.summary_length = summary_length
+        self.playbacker = mixer.init()
         if reasoning_effort and summary_length:
             self.reasoning = Reasoning(
                 effort=reasoning_effort, summary=summary_length)
@@ -467,17 +468,22 @@ The style of the generated images. This parameter is only supported for `dall-e-
 
         if save_to_file_path:
             respo.write_to_file(str(save_to_file_path))
-            if play and response_format == "wav":
-                sa.WaveObject.from_wave_file(str(save_to_file_path)).play()
+            if play:
+                sound = mixer.Sound(save_to_file_path).play()
+                while sound.get_busy():
+                    pass
 
         else:
-            if play and response_format == "wav":
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
+            if play:
+                with tempfile.NamedTemporaryFile(delete=False, suffix="." + response_format, delete_on_close=False) as f:
                     respo.write_to_file(f.name)
-                    bob = sa.WaveObject.from_wave_file(f.name).play()
+                    f.flush()
+                    f.close()
+                    sound = mixer.Sound(f.name).play()
+                    while sound.get_busy():
+                        pass
+                    os.remove(f.name)
                 
-                while bob.is_playing(): pass
-                os.remove(f.name)
                     
 
         if response_format != "wav" and play:
@@ -498,6 +504,7 @@ The style of the generated images. This parameter is only supported for `dall-e-
                                                       'aac', 'flac', 'wav', 'pcm'] = "wav",
                             speed: float = 1,
                             play: bool = True,
+                            print_response: bool = True,
                             save_to_file_path: str | None = None) -> str:
         """
         This is the full text to speech function.
@@ -558,6 +565,8 @@ The style of the generated images. This parameter is only supported for `dall-e-
         }
 
         self.text_to_speech(**say_params)
+        if print_response:
+            print(resp)
         
         return resp
 
