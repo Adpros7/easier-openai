@@ -28,6 +28,8 @@ Parameters: TypeAlias = dict[str, str | Properties | list[str]]
 FunctionSpec: TypeAlias = dict[str, str | Parameters]
 ToolSpec: TypeAlias = dict[str, str | FunctionSpec]
 
+Seconds: TypeAlias = float | int
+
 Optional_Parameters_Description: TypeAlias = dict[str, str]
 """give a dict like this: {'param1': 'description1', 'param2': 'description2'}"""
 
@@ -570,7 +572,7 @@ The style of the generated images. This parameter is only supported for `dall-e-
 
         return resp
 
-    def speech_to_text(self, mode: Literal["vad", "keyboard"] | int = "vad", model: Literal['tiny.en', 'tiny', 'base.en', 'base', 'small.en', 'small', 'medium.en', 'medium', 'large-v1', 'large-v2', 'large-v3', 'large', 'large-v3-turbo', 'turbo'] = "base",
+    def speech_to_text(self, mode: Literal["vad", "keyboard"] | Seconds = "vad", model: Literal['tiny.en', 'tiny', 'base.en', 'base', 'small.en', 'small', 'medium.en', 'medium', 'large-v1', 'large-v2', 'large-v3', 'large', 'large-v3-turbo', 'turbo'] = "base",
                        aggressive: int = 2,
                        chunk_duration_ms: int = 30, log_directions: bool = False):
         bobert = stt.STT(model=model, aggressive=aggressive,
