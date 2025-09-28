@@ -1,26 +1,28 @@
+
+from openai import OpenAI
+from ez_openai import Assistant as asss
+from ez_openai.decorator import openai_function
+import openai_stt as stt
+import simpleaudio as sa
+import json
+import base64
+from openai.resources.vector_stores.vector_stores import VectorStores
+from openai.types.vector_store import VectorStore
+from openai.types.conversations.conversation import Conversation
+from typing_extensions import TypedDict
+from os import getenv
+from openai.types.shared_params import ResponsesModel, Reasoning
+from typing import Any, Callable, Literal, TypeAlias, Unpack
+import types
+import os
 import tempfile
-from turtle import st
+import time
 import warnings
+from playsound import playsound
 
 from huggingface_hub import parse_safetensors_file_metadata
+from syntaxmod import wait_until
 warnings.filterwarnings("ignore")
-import os
-import types
-from typing import Any, Callable, Literal, TypeAlias, Unpack
-from openai.types.shared_params import ResponsesModel, Reasoning
-from os import getenv
-from typing_extensions import TypedDict
-from openai.types.conversations.conversation import Conversation
-from openai.types.vector_store import VectorStore
-from openai.resources.vector_stores.vector_stores import VectorStores
-import base64
-import json
-import simpleaudio as sa
-import openai_stt as stt
-from ez_openai.decorator import openai_function
-from ez_openai import Assistant as asss
-from openai import OpenAI
-
 
 
 PropertySpec: TypeAlias = dict[str, str]
@@ -34,6 +36,8 @@ Optional_Parameters_Description: TypeAlias = dict[str, str]
 
 
 Number: TypeAlias = int | float
+
+
 class Assistant:
     def __init__(
         self,
@@ -46,7 +50,6 @@ class Assistant:
                                   "low", "medium", "high"] | None = None,
         summary_length: Literal["auto", "concise", "detailed"] | None = None,
     ):
-        
         """
         Args:
             api_key (str | None): The API key to use for OpenAI API requests.
@@ -56,19 +59,19 @@ class Assistant:
             temperature (float | None, optional): The temperature to use for OpenAI API requests. Defaults to None.
             reasoning_effort (Literal["minimal", "low", "medium", "high"], optional): The reasoning effort to use for OpenAI API requests. Defaults to "medium".
             summary_length (Literal["auto", "concise", "detailed"], optional): The summary length to use for OpenAI API requests. Defaults to "auto".
-        
+
         Returns:
             Assistant: An instance of the Assistant class.
-            
+
         Raises:
             ValueError: If no API key is provided.
-            
+
         Examples:
             bot = Assistant(api_key=None, model="gpt-4o", system_prompt="You are helpful.")
-            
-        
+
+
         """
-        
+
         self.model = model
         if not api_key:
             if not getenv("OPENAI_API_KEY"):
@@ -86,8 +89,8 @@ class Assistant:
         if reasoning_effort and summary_length:
             self.reasoning = Reasoning(
                 effort=reasoning_effort, summary=summary_length)
-        
-        else: 
+
+        else:
             self.reasoning = None
 
         if default_conversation:
@@ -96,7 +99,7 @@ class Assistant:
         else:
             self.conversation = None
             self.conversation_id = None
-        
+
         self.asss = asss(self.api_key)
 
     def _convert_filepath_to_vector(
@@ -127,21 +130,20 @@ class Assistant:
         conv_id: str | None | Conversation | bool = True,
         max_output_tokens: int | None = None,
         store: bool = False,
-        web_search: bool  = False,
-        code_interpreter: bool  = False,
+        web_search: bool = False,
+        code_interpreter: bool = False,
         file_search: list[str] = [],
         if_file_search_max_searches: int | None = None,
         tools_required: Literal["none", "auto", "required"] = "auto",
         custom_tools: list[types.FunctionType] = [],
         if_custom_tools_params_description: Optional_Parameters_Description = {},
         return_full_response: bool = False,
-        valid_json: dict  = {},
+        valid_json: dict = {},
         force_valid_json: bool = False,
     ) -> str:
-        
         """
         This is the chat function
-        
+
         Args:
             input: The input text.
             conv_id: The conversation ID.
@@ -156,20 +158,20 @@ class Assistant:
             return_full_response: Whether to return the full response.
             valid_json: The valid json.
             force_valid_json: The force valid json.
-            
+
         Returns:
             The response text.
-            
+
         Raises:
             ValueError: If the conversation ID is invalid.
             ValueError: If the conversation ID is invalid.
-            
+
         Examples:
             >>> assistant = Assistant(api_key="YOUR_API_KEY", model="gpt-3.5-turbo")
             >>> response = assistant.chat("Hello, how are you?")
             >>> print(response)
             Hello, how are you?
-            
+
         ----------
         """
         convo = self.conversation_id if conv_id is True else conv_id
@@ -184,89 +186,90 @@ class Assistant:
             "model": self.model,
             "reasoning":  self.reasoning if self.reasoning is not None else None,
             "tools": []
-            
+
         }
-        
+
         if web_search:
             params_for_response["tools"].append({"type": "web_search"})
-        
+
         if code_interpreter:
             params_for_response["tools"].append({"type": "code_interpreter",
                                                  "container": {"type": "auto"}})
-            
+
         if file_search:
             vector = self._convert_filepath_to_vector(file_search)
-            
+
             if if_file_search_max_searches is None:
-                
+
                 params_for_response["tools"].append({"type": "file_search",
                                                     "vector_store_ids": vector[1].id})
-            
+
             else:
                 params_for_response["tools"].append({"type": "file_search",
                                                     "vector_store_ids": vector[1].id,
-                                                    "max_searches": if_file_search_max_searches})
-        
-        params_for_response = {k: v for k, v in params_for_response.items() if v is not None}
-        
+                                                     "max_searches": if_file_search_max_searches})
+
+        params_for_response = {
+            k: v for k, v in params_for_response.items() if v is not None}
+
         if tools_required == "none":
             params_for_response["tool_choice"] = "none"
         elif tools_required == "auto":
             params_for_response["tool_choice"] = "auto"
         elif tools_required == "required":
             params_for_response["tool_choice"] = "required"
-        
+
         if custom_tools:
-            params_for_response["tools"].append({"type": "custom",})
-        
-        params_for_response = {k: v for k, v in params_for_response.items() if v is not None}
+            params_for_response["tools"].append({"type": "custom", })
+
+        params_for_response = {
+            k: v for k, v in params_for_response.items() if v is not None}
         try:
             resp = self.client.responses.create(
                 **params_for_response
             )
-        
+
         except Exception as e:
             print("Error creating response: \n", e)
-        
+
         finally:
             if store:
-               self.conversation = resp.conversation
-            
+                self.conversation = resp.conversation
+
             if file_search:
                 vector[2].delete(vector[0].id)
-        
+
             if return_full_response:
                 return resp
             return resp.output_text
-        
+
     # def function_chat(self, input: str, func: list[Callable], descriptions: type[dict[str, str]]= dict[str, str], temprature: float | None = None):
     #     if temprature is None:
     #         tempratures = self.temperature
-        
+
     #     that = openai_function(descriptions=descriptions)(func)
     #     if tempratures is None:
     #         tempratures = None
     #         bob = self.asss.create("bob", functions=[that], model=self.model, instructions=self.system_prompt)
     #         blib = bob.conversation.create()
     #         stob = blib.ask(input)
-        
+
     #     else:
     #         bob = self.asss.create("bob", functions=[that], model=self.model, instructions=self.system_prompt)
     #         blib = bob.conversation.create()
     #         stob = blib.ask(input)
-        
+
     #     return stob
-        
+
     def create_conversation(self, return_id_only: bool = False) -> Conversation | str:
-        
         """
         Create a conversation
-        
+
         Args:
             return_id_only (bool, optional): If True, return only the conversation ID, by default False
         ----------
         """
-        
+
         conversation = self.client.conversations.create()
         if return_id_only:
             return conversation.id
@@ -371,7 +374,6 @@ The style of the generated images. This parameter is only supported for `dall-e-
             return img.data[0].b64_json
 
     def update_assistant(self, what_to_change: Literal["model", "system_prompt", "temperature", "reasoning_effort", "summary_length", "function_call_list"], new_value):
-        
         """
         Update the parameters of the assistant.
 
@@ -384,7 +386,7 @@ The style of the generated images. This parameter is only supported for `dall-e-
 
         Raises:
             ValueError: If the parameter to change is invalid.
-        
+
         Examples:
             >>> assistant.update_assistant("model", "gpt-4o")
             >>> assistant.update_assistant("system_prompt", "You are a helpful assistant.")
@@ -393,7 +395,7 @@ The style of the generated images. This parameter is only supported for `dall-e-
             >>> assistant.update_assistant("summary_length", "concise")
             >>> assistant.update_assistant("function_call_list", [FunctionCall(name="get_current_weather", arguments={"location": "San Francisco"})])
         """
-        
+
         if what_to_change == "model":
             self.model = new_value
         elif what_to_change == "system_prompt":
@@ -410,18 +412,19 @@ The style of the generated images. This parameter is only supported for `dall-e-
             raise ValueError("Invalid parameter to  change")
 
     def text_to_speech(self, input: str,
-                       model: Literal["tts-1", "tts-1-hd", "gpt-4o-mini-tts"] = "tts-1",
-                       voice: str | Literal['alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse', 'marin', 'cedar'] = "alloy",
-                       instructions: str  = "NOT_GIVEN",
+                       model: Literal["tts-1", "tts-1-hd",
+                                      "gpt-4o-mini-tts"] = "tts-1",
+                       voice: str | Literal['alloy', 'ash', 'ballad', 'coral', 'echo',
+                                            'sage', 'shimmer', 'verse', 'marin', 'cedar'] = "alloy",
+                       instructions: str = "NOT_GIVEN",
                        response_format:  Literal['mp3', 'opus',
-                                                           'aac', 'flac', 'wav', 'pcm'] = "wav",
-                       speed: float  = 1,
+                                                 'aac', 'flac', 'wav', 'pcm'] = "wav",
+                       speed: float = 1,
                        play: bool = True,
                        save_to_file_path: str | None = None):
-        
         """
         Convert text to speech
-        
+
         Args:
             input (str): The text to convert to speech
             model (Literal['tts-1', 'tts-1-hd', 'gpt-4o-mini-tts'], optional): The model to use. Defaults to "tts-1".
@@ -431,22 +434,22 @@ The style of the generated images. This parameter is only supported for `dall-e-
             speed (float, optional): The speed to use. Defaults to 1.
             play (bool, optional): Whether to play the audio. Defaults to True.
             save_to_file_path (str | None, optional): The path to save the audio to. Defaults to None.
-            
+
         Returns:
             None
-            
+
         Raises:
             Exception: If the response format is not wav and play is True
-            
+
         Examples:
             ```python
                 assistant.text_to_speech(input="hello", voice="alloy", save_to_file_path="test.wav", response_format="wav")
             ```
-            
+
             ```python
                 assistant.text_to_speech(input="hello", voice="alloy", response_format="wav", play=True)
             ```
-            
+
             ```python
                 assistant.text_to_speech(input="hello", voice="alloy", response_format="wav", play=True, save_to_file_path="test.wav")
             ```
@@ -459,25 +462,27 @@ The style of the generated images. This parameter is only supported for `dall-e-
             "response_format": response_format,
             "speed": speed
         }
-        
+
         respo = self.client.audio.speech.create(**params)
-        
-        
+
         if save_to_file_path:
             respo.write_to_file(str(save_to_file_path))
             if play and response_format == "wav":
                 sa.WaveObject.from_wave_file(str(save_to_file_path)).play()
-                
+
         else:
             if play and response_format == "wav":
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
                     respo.write_to_file(f.name)
-                    sa.WaveObject.from_wave_file(f.name).play().wait_done()
-                    os.remove(f.name)
-        
-        if response_format != "wav" and play:
-            raise Exception("Cannot play audio if response format is not wav")
+                    bob = sa.WaveObject.from_wave_file(f.name).play()
                 
+                while bob.is_playing(): pass
+                os.remove(f.name)
+                    
+
+        if response_format != "wav" and play:
+            print("Only wav format is supported for playing audio")
+
     def full_text_to_speech(self, input: str,
                             conv_id: str | Conversation | bool | None = True,
                             max_output_tokens: int | None = None,
@@ -512,18 +517,18 @@ The style of the generated images. This parameter is only supported for `dall-e-
             speed: The speed.
             play: Whether to play the audio.
             save_to_file_path: The save to file path.
-        
+
         Returns:
             The response.
-            
+
         Raises:
             Exception: If the response format is not wav.
-            
+
         Example:
             ```python
             >>> assistant.full_text_to_speech("Hello, world!", model="tts-1", voice="alloy", instructions="NOT_GIVEN", response_format="wav", speed=1, play=True, save_to_file_path=None)
             ```
-            
+
             ```python
             >>> assistant.full_text_to_speech("Hello, world!", model="tts-1", voice="alloy", instructions="NOT_GIVEN", response_format="wav", speed=1, play=True, save_to_file_path="test.wav")
             ```
@@ -538,10 +543,9 @@ The style of the generated images. This parameter is only supported for `dall-e-
             "file_search": file_search,
             "tools_required": tools_required
         }
-        
-        
+
         resp = self.chat(**param)
-        
+
         say_params = {
             "model": model,
             "voice": voice,
@@ -552,28 +556,27 @@ The style of the generated images. This parameter is only supported for `dall-e-
             "save_to_file_path": save_to_file_path,
             "input": resp
         }
-        
+
         self.text_to_speech(**say_params)
         
         return resp
-        
-    def speech_to_text(self, mode: Literal["vad", "keyboard"] | int = "vad" , model: Literal['tiny.en', 'tiny', 'base.en', 'base', 'small.en', 'small', 'medium.en', 'medium', 'large-v1', 'large-v2', 'large-v3', 'large', 'large-v3-turbo', 'turbo'] = "base",
+
+    def speech_to_text(self, mode: Literal["vad", "keyboard"] | int = "vad", model: Literal['tiny.en', 'tiny', 'base.en', 'base', 'small.en', 'small', 'medium.en', 'medium', 'large-v1', 'large-v2', 'large-v3', 'large', 'large-v3-turbo', 'turbo'] = "base",
                        aggressive: int = 2,
                        chunk_duration_ms: int = 30, log_directions: bool = False):
-        bobert = stt.STT(model=model, aggressive=aggressive, chunk_duration_ms=chunk_duration_ms)
-        
+        bobert = stt.STT(model=model, aggressive=aggressive,
+                         chunk_duration_ms=chunk_duration_ms)
+
         if mode == "keyboard":
             bob = bobert.record_with_keyboard(log=log_directions)
         elif mode == "vad":
             bob = bobert.record_with_vad(log=log_directions)
-        
+
         elif isinstance(mode, int):
             bob = bobert.record_for_seconds(mode)
-            
+
         return bob
-        
-    
-    
+
     class __mass_update_helper(TypedDict, total=False):
         model: ResponsesModel
         system_prompt: str
@@ -586,10 +589,15 @@ The style of the generated images. This parameter is only supported for `dall-e-
         for key, value in __mass_update_helper.items():
             setattr(self, key, value)
 
+
 if __name__ == "__main__":
     bob: Assistant = Assistant(api_key=None, model="gpt-4o",
-                    system_prompt="You are a helpful assistant.")
+                               system_prompt="You are a helpful assistant.")
 
     # Define schema + function
-
-    bob.full_text_to_speech(input="hello")
+    for i in range(3):
+        inputs = input("say something: ")
+        h = bob.chat(inputs)
+        print(h)
+        bob.text_to_speech(h)
+        time.sleep(1)
