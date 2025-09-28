@@ -1,6 +1,3 @@
-import warnings
-warnings.filterwarnings("ignore")
-
 from openai import OpenAI
 from ez_openai import Assistant as asss
 from ez_openai.decorator import openai_function
@@ -14,15 +11,15 @@ from openai.types.conversations.conversation import Conversation
 from typing_extensions import TypedDict
 from os import getenv
 from openai.types.shared_params import ResponsesModel, Reasoning
-from typing import Any, Callable, Literal, TypeAlias, Unpack
+from typing import Literal, TypeAlias, Unpack
 import types
 import os
 import tempfile
-import time
 from pygame import mixer
-
 from huggingface_hub import parse_safetensors_file_metadata
 from syntaxmod import wait_until
+import warnings
+warnings.filterwarnings("ignore")
 
 
 PropertySpec: TypeAlias = dict[str, str]
@@ -94,8 +91,8 @@ class Assistant:
         else:
             self.reasoning = None
 
-        if default_conversation:
-            self.conversation = self.create_conversation()
+        if default_conversation is True:
+            self.conversation = self.client.conversations.create()
             self.conversation_id = self.conversation.id  # type: ignore
         else:
             self.conversation = None
@@ -146,25 +143,24 @@ class Assistant:
         This is the chat function
 
         Args:
-            input: The input text.
-            conv_id: The conversation ID.
-            max_output_tokens: The maximum output tokens.
-            store: Whether to store the conversation.
-            web_search: Whether to use web search.
-            code_interpreter: Whether to use code interpreter.
-            file_search: The file search.
-            tools_required: The tools required.
-            custom_tools: The custom tools.
-            if_file_search_max_searches: The if file search max searches.
-            return_full_response: Whether to return the full response.
-            valid_json: The valid json.
-            force_valid_json: The force valid json.
+            input: The input text. Defaults to None.
+            conv_id: The conversation ID. Defaults to True. Put the conversation ID here. If you want to create a new conversation, put True.
+            max_output_tokens: The maximum output tokens. Defaults to None.
+            store: Whether to store the conversation. Defaults to False.
+            web_search: Whether to use web search.  Defaults to False.
+            code_interpreter: Whether to use code interpreter.  Defaults to False.
+            file_search: The file search. Defaults to [].
+            tools_required: The tools required. Defaults to "auto".
+            custom_tools: The custom tools. Defaults to [].
+            if_file_search_max_searches: The if file search max searches. Defaults to None.
+            return_full_response: Whether to return the full response. Defaults to False.
+            valid_json: The valid json. Defaults to {}.
+            force_valid_json: The force valid json. Defaults to False.
 
         Returns:
             The response text.
 
         Raises:
-            ValueError: If the conversation ID is invalid.
             ValueError: If the conversation ID is invalid.
 
         Examples:
@@ -175,7 +171,7 @@ class Assistant:
 
         ----------
         """
-        convo = self.conversation_id if conv_id is True else conv_id
+        convo = self.conversation_id if conv_id is True else str(conv_id)
         if not convo:
             convo = False
         params_for_response = {
@@ -212,6 +208,9 @@ class Assistant:
 
         params_for_response = {
             k: v for k, v in params_for_response.items() if v is not None}
+
+        params_for_response = {
+            k: v for k, v in params_for_response.items() if v is not False}
 
         if tools_required == "none":
             params_for_response["tool_choice"] = "none"
@@ -436,11 +435,12 @@ The style of the generated images. This parameter is only supported for `dall-e-
             play (bool, optional): Whether to play the audio. Defaults to True.
             save_to_file_path (str | None, optional): The path to save the audio to. Defaults to None.
 
+
         Returns:
             None
 
         Raises:
-            Exception: If the response format is not wav and play is True
+            None
 
         Examples:
             ```python
@@ -483,8 +483,6 @@ The style of the generated images. This parameter is only supported for `dall-e-
                     while sound.get_busy():
                         pass
                     os.remove(f.name)
-                
-                    
 
         if response_format != "wav" and play:
             print("Only wav format is supported for playing audio")
@@ -509,21 +507,23 @@ The style of the generated images. This parameter is only supported for `dall-e-
         """
         This is the full text to speech function.
         Args:
-            input: The input text.
-            conv_id: The conversation ID.
-            max_output_tokens: The maximum output tokens.
-            store: Whether to store the conversation.
-            web_search: Whether to use web search.
-            code_interpreter: Whether to use code interpreter.
-            file_search: The file search.
-            tools_required: The tools required.
-            model: The model.
-            voice: The voice.
-            instructions: The instructions.
-            response_format: The response format.
-            speed: The speed.
-            play: Whether to play the audio.
-            save_to_file_path: The save to file path.
+            input: The input text. Defaults to True.
+            conv_id: The conversation ID. defaults to True. If True, a the default conversation ID will be used.
+            max_output_tokens: The maximum output tokens. Defaults to None.
+            store: Whether to store the conversation. Defaults to False.
+            web_search: Whether to use web search. Defaults to None.
+            code_interpreter: Whether to use code interpreter. Defaults to None.
+            file_search: The file search. Defaults to None.
+            tools_required: The tools required. Defaults to "auto".
+            model: The model. Defaults to "tts-1".
+            voice: The voice.   Defaults to "alloy".
+            instructions: The instructions. Defaults to "NOT_GIVEN".
+            response_format: The response format. Defaults to "wav".
+            speed: The speed. Defaults to 1.
+            play: Whether to play the audio. Defaults to True.
+            print_response: Whether to print the response. Defaults to True.
+            save_to_file_path: The save to file path. Defaults to None.
+
 
         Returns:
             The response.
@@ -567,7 +567,7 @@ The style of the generated images. This parameter is only supported for `dall-e-
         self.text_to_speech(**say_params)
         if print_response:
             print(resp)
-        
+
         return resp
 
     def speech_to_text(self, mode: Literal["vad", "keyboard"] | int = "vad", model: Literal['tiny.en', 'tiny', 'base.en', 'base', 'small.en', 'small', 'medium.en', 'medium', 'large-v1', 'large-v2', 'large-v3', 'large', 'large-v3-turbo', 'turbo'] = "base",
@@ -604,9 +604,7 @@ if __name__ == "__main__":
                                system_prompt="You are a helpful assistant.")
 
     # Define schema + function
-    for i in range(3):
-        inputs = input("say something: ")
-        h = bob.chat(inputs)
+    while True:
+        inputa = input("Enter text: ")
+        h = bob.chat(inputa)
         print(h)
-        bob.text_to_speech(h)
-        time.sleep(1)
