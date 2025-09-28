@@ -4,15 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "easier-openai"
-version = "0.2.52"
+version = "0.3.0"
 description = "Utilities for orchestrating OpenAI chat, tool calling, search, audio, and images from one helper package."
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
 authors = [
   { name = "Advik Mathur", email = "pranit.advik@gmail.com" },
 ]
-keywords = ["openai", "assistant", "chat", "responses", "audio", "images", "vector"]
+keywords = ["openai", "assistant", "chat", "responses", "audio", "images", "vector", "speech"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
@@ -38,10 +38,10 @@ dependencies = [
 
 [project.optional-dependencies]
 function_tools = [
-  "ez-openai",
+  "ez-openai>=0.0.7",
 ]
 speech_models = [
-  "whisper>=1.0",
+  "whisper>=1.1.10",
 ]
 
 [project.urls]

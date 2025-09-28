@@ -30,4 +30,4 @@ easier_gpt.egg-info/top_level.txt
 /easier_openai.egg-info
 /dist
 .gitignore
-/
+/easier_openai/__pycache__

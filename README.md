@@ -1,34 +1,37 @@
 # Easier OpenAI
 
-Easier OpenAI offers a light wrapper around the OpenAI Python SDK so you can chat with models, toggle built-in tools, upload reference files, and request images through one unified helper.
+Easier OpenAI wraps the official OpenAI Python SDK so you can drive modern assistants, manage tool selection, search files, and work with speech in one place.
 
-## Highlights
-
-- Single `Assistant` class for conversational flows, tool selection, and multi-turn context.
-- Temporary vector store support to search across local reference documents during a chat.
-- Flags for web search or code interpreter when the selected OpenAI model supports them.
-- Image helpers for `gpt-image-1`, `dall-e-2`, and `dall-e-3` with convenient file handling.
+## What's Included
+- Conversational `Assistant` helper with conversation memory and tool toggles.
+- Temporary vector store ingestion to ground answers in local notes.
+- Built-in helpers for image generation and text-to-speech playback.
+- Speech-to-text recording shortcuts for quick dictation.
+- Optional `openai_function` decorator re-exported for function tool schemas.
 
 ## Installation
-
 ```bash
 pip install easier-openai
 ```
 
-Set `OPENAI_API_KEY` in your environment or pass an explicit key when you build the assistant instance.
+Optional extras:
+```bash
+pip install "easier-openai[function_tools]"   # decorator helpers
+pip install "easier-openai[speech_models]"    # whisper speech recognition models
+```
 
-## Usage Example
+Set `OPENAI_API_KEY` in your environment or pass it explicitly when constructing the assistant.
 
+## Quick Start
 ```python
 from easier_openai import Assistant
 
-assistant = Assistant(model="gpt-4o", system_prompt="You are concise.")
+assistant = Assistant(api_key=None, model="gpt-4o", system_prompt="You are concise.")
 response_text = assistant.chat("Summarize Rayleigh scattering in one sentence.")
 print(response_text)
 ```
 
-### File Search Example
-
+### Ground replies with your files
 ```python
 notes = ["notes/overview.md", "notes/data-sheet.pdf"]
 reply = assistant.chat(
@@ -39,17 +42,24 @@ reply = assistant.chat(
 print(reply)
 ```
 
-## Requirements
+### Generate speech from responses
+```python
+assistant.full_text_to_speech(
+    "Ship a status update that sounds upbeat",
+    model="gpt-4o-mini-tts",
+    voice="alloy",
+    play=True,
+)
+```
 
+## Requirements
 - Python 3.10 or newer
 - `openai>=1.43.0`
 - `typing_extensions>=4.7.0`
 - `pydantic>=2.0.0`
 
 ## Contributing
-
 Issues and pull requests are welcome. Please run checks locally before submitting changes.
 
 ## License
-
 This project is licensed under the [Apache License 2.0](LICENSE).
