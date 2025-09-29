@@ -7,7 +7,7 @@ name = "easier-openai"
 version = "0.3.11"
 description = "Utilities for orchestrating OpenAI chat, tool calling, search, audio, and images from one helper package."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.13"
 license = { text = "Apache-2.0" }
 authors = [
   { name = "Advik Mathur", email = "pranit.advik@gmail.com" },
@@ -29,7 +29,7 @@ dependencies = [
   "typing-extensions>=4.7.0",
   "pydantic>=2.0.0",
   "simpleaudio>=1.0.4",
-  "openai-stt>=0.1.0",
+  "openai-stt>=0.1.7.2",
   "whisper>=1.1.10",
   "ez-openai>=0.0.7",
   "pygame>=2.5.0",

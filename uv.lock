@@ -142,7 +142,7 @@ wheels = [
 
 [[package]]
 name = "easier-openai"
-version = "0.2.52"
+version = "0.3.11"
 source = { editable = "." }
 dependencies = [
     { name = "ez-openai" },
@@ -167,16 +167,16 @@ speech-models = [
 [package.metadata]
 requires-dist = [
     { name = "ez-openai", specifier = ">=0.0.7" },
-    { name = "ez-openai", marker = "extra == 'function-tools'" },
+    { name = "ez-openai", marker = "extra == 'function-tools'", specifier = ">=0.0.7" },
     { name = "huggingface-hub", specifier = ">=0.35.1" },
     { name = "openai", specifier = ">=1.43.0" },
-    { name = "openai-stt", specifier = ">=0.1.0" },
+    { name = "openai-stt", specifier = ">=0.1.7.2" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "pygame", specifier = ">=2.5.0" },
     { name = "simpleaudio", specifier = ">=1.0.4" },
     { name = "typing-extensions", specifier = ">=4.7.0" },
     { name = "whisper", specifier = ">=1.1.10" },
-    { name = "whisper", marker = "extra == 'speech-models'", specifier = ">=1.0" },
+    { name = "whisper", marker = "extra == 'speech-models'", specifier = ">=1.1.10" },
 ]
 provides-extras = ["function-tools", "speech-models"]
 
@@ -718,7 +718,7 @@ wheels = [
 
 [[package]]
 name = "openai-stt"
-version = "0.1.7.1"
+version = "0.1.7.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "faster-whisper" },
@@ -729,9 +729,9 @@ dependencies = [
     { name = "torch" },
     { name = "webrtcvad" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d4/37/b354c53863cba3c811bd7455b567dd69b4665c764f8fe36c41c1f2640a37/openai_stt-0.1.7.1.tar.gz", hash = "sha256:39102433760e3f6cf270484083eb70f6f16308e3a24dd856e7aada923ed19f43", size = 4011, upload-time = "2025-09-25T00:07:22.507Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8a/b3/237317da3ede351a7aec7e807f727479807ec152cad78a7e963168fab984/openai_stt-0.1.7.2.tar.gz", hash = "sha256:88c1ad6d4ff2a39f37c709095f8816048344975dfb3390151205ce8b28814a83", size = 4010, upload-time = "2025-09-29T01:04:10.081Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a5/3b/f4437915160dec5001fc62ad2d1b69488462958e1e03b17019c8641b5e82/openai_stt-0.1.7.1-py3-none-any.whl", hash = "sha256:bbfc7e6a7197aa90d77f12e23b64e7c16617f1d36f9804e7b50985e9b4a08bc8", size = 4328, upload-time = "2025-09-25T00:07:21.125Z" },
+    { url = "https://files.pythonhosted.org/packages/22/e3/2e432c6002a0d6b01e074627fefa670ff9ae1a1b68277fad2b47bc2542a9/openai_stt-0.1.7.2-py3-none-any.whl", hash = "sha256:c2862ea1b897361fe196c102aabe7e1577c619845390ad098dce4aee4659b70b", size = 4334, upload-time = "2025-09-29T01:04:09.279Z" },
 ]
 
 [[package]]

@@ -4,9 +4,10 @@ from importlib import metadata as _metadata
 
 from .assistant import Assistant  # re-export primary helper
 from .assistant import Seconds
+from .assistant import VadAgressiveness
 from ez_openai.decorator import openai_function  # convenience decorator re-export
 
-__all__ = ["Assistant", "openai_function", "__version__", "__description__", "Seconds"]
+__all__ = ["Assistant", "openai_function", "__version__", "__description__", "Seconds", "VadAgressiveness"]
 
 _DISTRIBUTION_NAME = "easier-openai"
 
