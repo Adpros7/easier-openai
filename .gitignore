@@ -31,3 +31,4 @@ easier_gpt.egg-info/top_level.txt
 /dist
 .gitignore
 /easier_openai/__pycache__
+generate_key_literals.py

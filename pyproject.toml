@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "easier-openai"
-version = "0.3.2"
+version = "0.3.3"
 description = "Utilities for orchestrating OpenAI chat, tool calling, search, audio, and images from one helper package."
 readme = "README.md"
 requires-python = ">=3.13"
@@ -34,6 +34,7 @@ dependencies = [
   "ez-openai>=0.0.7",
   "pygame>=2.5.0",
   "huggingface-hub>=0.35.1",
+  "shed>=2025.6.1",
 ]
 
 [project.optional-dependencies]

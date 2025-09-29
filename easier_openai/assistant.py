@@ -1,24 +1,24 @@
-from openai import OpenAI
-from ez_openai import Assistant as asss
-from ez_openai.decorator import openai_function
-import openai_stt as stt
-import simpleaudio as sa
-import json
 import base64
-from openai.resources.vector_stores.vector_stores import VectorStores
-from openai.types.vector_store import VectorStore
-from openai.types.conversations.conversation import Conversation
-from typing_extensions import TypedDict
-from os import getenv
-from openai.types.shared_params import ResponsesModel, Reasoning
-from typing import Literal, TypeAlias, Unpack
-import types
+import json
 import os
 import tempfile
-from pygame import mixer
-from huggingface_hub import parse_safetensors_file_metadata
-from syntaxmod import wait_until
+import types
 import warnings
+from os import getenv
+from typing import Literal, TypeAlias, Unpack
+import openai_stt as stt
+import simpleaudio as sa
+from ez_openai import Assistant as asss
+from ez_openai.decorator import openai_function
+from openai import OpenAI
+from openai.resources.vector_stores.vector_stores import VectorStores
+from openai.types.conversations.conversation import Conversation
+from openai.types.shared_params import Reasoning, ResponsesModel
+from openai.types.vector_store import VectorStore
+from pygame import mixer
+from syntaxmod import wait_until
+from typing_extensions import TypedDict
+
 warnings.filterwarnings("ignore")
 
 
@@ -29,10 +29,10 @@ FunctionSpec: TypeAlias = dict[str, str | Parameters]
 ToolSpec: TypeAlias = dict[str, str | FunctionSpec]
 
 Seconds: TypeAlias = int
-VadAgressiveness: TypeAlias = Literal[1, 2, 3]
 
 Optional_Parameters_Description: TypeAlias = dict[str, str]
 """give a dict like this: {'param1': 'description1', 'param2': 'description2'}"""
+VadAgressiveness: TypeAlias = Literal[1, 2, 3]
 
 
 Number: TypeAlias = int | float
@@ -46,8 +46,7 @@ class Assistant:
         system_prompt: str = "",
         default_conversation: Conversation | bool = True,
         temperature: float | None = None,
-        reasoning_effort: Literal["minimal",
-                                  "low", "medium", "high"] | None = None,
+        reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = None,
         summary_length: Literal["auto", "concise", "detailed"] | None = None,
     ):
         """
@@ -88,8 +87,7 @@ class Assistant:
         self.summary_length = summary_length
         self.playbacker = mixer.init()
         if reasoning_effort and summary_length:
-            self.reasoning = Reasoning(
-                effort=reasoning_effort, summary=summary_length)
+            self.reasoning = Reasoning(effort=reasoning_effort, summary=summary_length)
 
         else:
             self.reasoning = None
@@ -107,16 +105,13 @@ class Assistant:
         self, list_of_files: list[str]
     ) -> tuple[VectorStore, VectorStore, VectorStores]:
         if not isinstance(list_of_files, list) or len(list_of_files) == 0:
-            raise ValueError(
-                "list_of_files must be a non-empty list of file paths.")
+            raise ValueError("list_of_files must be a non-empty list of file paths.")
         for filepath in list_of_files:
             if not os.path.exists(filepath):
                 raise FileNotFoundError(f"File not found: {filepath}")
 
-        vector_store_create = self.client.vector_stores.create(
-            name="vector_store")
-        vector_store = self.client.vector_stores.retrieve(
-            vector_store_create.id)
+        vector_store_create = self.client.vector_stores.create(name="vector_store")
+        vector_store = self.client.vector_stores.retrieve(vector_store_create.id)
         vector = self.client.vector_stores
         for filepath in list_of_files:
             with open(filepath, "rb") as f:
@@ -178,42 +173,55 @@ class Assistant:
         if not convo:
             convo = False
         params_for_response = {
-            "input": input if valid_json == {} else input + "RESPOND ONLY IN VALID JSON FORMAT LIKE THIS: " + json.dumps(valid_json),
+            "input": (
+                input
+                if valid_json == {}
+                else input
+                + "RESPOND ONLY IN VALID JSON FORMAT LIKE THIS: "
+                + json.dumps(valid_json)
+            ),
             "instructions": self.system_prompt,
             "conversation": convo,
             "max_output_tokens": max_output_tokens,
             "store": store,
             "model": self.model,
-            "reasoning":  self.reasoning if self.reasoning is not None else None,
-            "tools": []
-
+            "reasoning": self.reasoning if self.reasoning is not None else None,
+            "tools": [],
         }
 
         if web_search:
             params_for_response["tools"].append({"type": "web_search"})
 
         if code_interpreter:
-            params_for_response["tools"].append({"type": "code_interpreter",
-                                                 "container": {"type": "auto"}})
+            params_for_response["tools"].append(
+                {"type": "code_interpreter", "container": {"type": "auto"}}
+            )
 
         if file_search:
             vector = self._convert_filepath_to_vector(file_search)
 
             if if_file_search_max_searches is None:
 
-                params_for_response["tools"].append({"type": "file_search",
-                                                    "vector_store_ids": vector[1].id})
+                params_for_response["tools"].append(
+                    {"type": "file_search", "vector_store_ids": vector[1].id}
+                )
 
             else:
-                params_for_response["tools"].append({"type": "file_search",
-                                                    "vector_store_ids": vector[1].id,
-                                                     "max_searches": if_file_search_max_searches})
+                params_for_response["tools"].append(
+                    {
+                        "type": "file_search",
+                        "vector_store_ids": vector[1].id,
+                        "max_searches": if_file_search_max_searches,
+                    }
+                )
 
         params_for_response = {
-            k: v for k, v in params_for_response.items() if v is not None}
+            k: v for k, v in params_for_response.items() if v is not None
+        }
 
         params_for_response = {
-            k: v for k, v in params_for_response.items() if v is not False}
+            k: v for k, v in params_for_response.items() if v is not False
+        }
 
         if tools_required == "none":
             params_for_response["tool_choice"] = "none"
@@ -223,14 +231,17 @@ class Assistant:
             params_for_response["tool_choice"] = "required"
 
         if custom_tools:
-            params_for_response["tools"].append({"type": "custom", })
+            params_for_response["tools"].append(
+                {
+                    "type": "custom",
+                }
+            )
 
         params_for_response = {
-            k: v for k, v in params_for_response.items() if v is not None}
+            k: v for k, v in params_for_response.items() if v is not None
+        }
         try:
-            resp = self.client.responses.create(
-                **params_for_response
-            )
+            resp = self.client.responses.create(**params_for_response)
 
         except Exception as e:
             print("Error creating response: \n", e)
@@ -285,54 +296,65 @@ class Assistant:
         background: Literal["transparent", "opaque", "auto"] | None = None,
         output_format: Literal["webp", "png", "jpeg"] = "png",
         output_compression: int | None = None,
-        quality: Literal['standard', 'hd', 'low',
-                         'medium', 'high', 'auto'] | None = None,
-        size: Literal['auto', '1024x1024', '1536x1024', '1024x1536',
-                      '256x256', '512x512', '1792x1024', '1024x1792'] | None = None,
+        quality: (
+            Literal["standard", "hd", "low", "medium", "high", "auto"] | None
+        ) = None,
+        size: (
+            Literal[
+                "auto",
+                "1024x1024",
+                "1536x1024",
+                "1024x1536",
+                "256x256",
+                "512x512",
+                "1792x1024",
+                "1024x1792",
+            ]
+            | None
+        ) = None,
         n: int = 1,
         moderation: Literal["auto", "low"] | None = None,
         style: Literal["vivid", "natural"] | None = None,
         return_base64: bool = False,
         make_file: bool = False,
         file_name_if_make_file: str = "generated_image",
-
     ):
         """**prompt**
-A text description of the desired image(s). The maximum length is 32000 characters for `gpt-image-1`, 1000 characters for `dall-e-2` and 4000 characters for `dall-e-3`.
+        A text description of the desired image(s). The maximum length is 32000 characters for `gpt-image-1`, 1000 characters for `dall-e-2` and 4000 characters for `dall-e-3`.
 
-**background**
-Allows to set transparency for the background of the generated image(s). This parameter is only supported for `gpt-image-1`. Must be one of `transparent`, `opaque` or `auto` (default value). When `auto` is used, the model will automatically determine the best background for the image.
+        **background**
+        Allows to set transparency for the background of the generated image(s). This parameter is only supported for `gpt-image-1`. Must be one of `transparent`, `opaque` or `auto` (default value). When `auto` is used, the model will automatically determine the best background for the image.
 
-If `transparent`, the output format needs to support transparency, so it should be set to either `png` (default value) or `webp`.
+        If `transparent`, the output format needs to support transparency, so it should be set to either `png` (default value) or `webp`.
 
-**model**
-The model to use for image generation. One of `dall-e-2`, `dall-e-3`, or `gpt-image-1`. Defaults to `dall-e-2` unless a parameter specific to `gpt-image-1` is used.
+        **model**
+        The model to use for image generation. One of `dall-e-2`, `dall-e-3`, or `gpt-image-1`. Defaults to `dall-e-2` unless a parameter specific to `gpt-image-1` is used.
 
-**moderation**
-Control the content-moderation level for images generated by `gpt-image-1`. Must be either `low` for less restrictive filtering or `auto` (default value).
+        **moderation**
+        Control the content-moderation level for images generated by `gpt-image-1`. Must be either `low` for less restrictive filtering or `auto` (default value).
 
-**n**
-The number of images to generate. Must be between 1 and 10. For `dall-e-3`, only `n=1` is supported.
+        **n**
+        The number of images to generate. Must be between 1 and 10. For `dall-e-3`, only `n=1` is supported.
 
-**output_compression**
-The compression level (0-100%) for the generated images. This parameter is only supported for `gpt-image-1` with the `webp` or `jpeg` output formats, and defaults to 100.
+        **output_compression**
+        The compression level (0-100%) for the generated images. This parameter is only supported for `gpt-image-1` with the `webp` or `jpeg` output formats, and defaults to 100.
 
-**output_format**
-The format in which the generated images are returned. This parameter is only supported for `gpt-image-1`. Must be one of `png`, `jpeg`, or `webp`.
+        **output_format**
+        The format in which the generated images are returned. This parameter is only supported for `gpt-image-1`. Must be one of `png`, `jpeg`, or `webp`.
 
-**quality**
-The quality of the image that will be generated.* `auto` (default value) will automatically select the best quality for the given model.
+        **quality**
+        The quality of the image that will be generated.* `auto` (default value) will automatically select the best quality for the given model.
 
-* `high`, `medium` and `low` are supported for `gpt-image-1`.
-* `hd` and `standard` are supported for `dall-e-3`.
-* `standard` is the only option for `dall-e-2`.
+        * `high`, `medium` and `low` are supported for `gpt-image-1`.
+        * `hd` and `standard` are supported for `dall-e-3`.
+        * `standard` is the only option for `dall-e-2`.
 
-**size**
-The size of the generated images. Must be one of `1024x1024`, `1536x1024` (landscape), `1024x1536` (portrait), or `auto` (default value) for `gpt-image-1`, one of `256x256`, `512x512`, or `1024x1024` for `dall-e-2`, and one of `1024x1024`, `1792x1024`, or `1024x1792` for `dall-e-3`.
+        **size**
+        The size of the generated images. Must be one of `1024x1024`, `1536x1024` (landscape), `1024x1536` (portrait), or `auto` (default value) for `gpt-image-1`, one of `256x256`, `512x512`, or `1024x1024` for `dall-e-2`, and one of `1024x1024`, `1792x1024`, or `1024x1792` for `dall-e-3`.
 
-**style**
-The style of the generated images. This parameter is only supported for `dall-e-3`. Must be one of `vivid` or `natural`. Vivid causes the model to lean towards generating hyper-real and dramatic images. Natural causes the model to produce more natural, less hyper-real looking images.
-"""
+        **style**
+        The style of the generated images. This parameter is only supported for `dall-e-3`. Must be one of `vivid` or `natural`. Vivid causes the model to lean towards generating hyper-real and dramatic images. Natural causes the model to produce more natural, less hyper-real looking images.
+        """
         params = {
             "model": model,
             "prompt": prompt,
@@ -345,19 +367,14 @@ The style of the generated images. This parameter is only supported for `dall-e-
             "moderation": moderation,
             "style": style,
             "response_format": "b64_json" if model != "gpt-image-1" else None,
-
-
-
         }
 
-        clean_params = {k: v for k, v in params.items(
-        ) if v is not None or "" or [] or {}}
+        clean_params = {
+            k: v for k, v in params.items() if v is not None or "" or [] or {}
+        }
 
         try:
-            img = self.client.images.generate(
-                **clean_params
-
-            )
+            img = self.client.images.generate(**clean_params)
 
         except Exception as e:
             raise e
@@ -376,7 +393,18 @@ The style of the generated images. This parameter is only supported for `dall-e-
 
             return img.data[0].b64_json
 
-    def update_assistant(self, what_to_change: Literal["model", "system_prompt", "temperature", "reasoning_effort", "summary_length", "function_call_list"], new_value):
+    def update_assistant(
+        self,
+        what_to_change: Literal[
+            "model",
+            "system_prompt",
+            "temperature",
+            "reasoning_effort",
+            "summary_length",
+            "function_call_list",
+        ],
+        new_value,
+    ):
         """
         Update the parameters of the assistant.
 
@@ -414,17 +442,31 @@ The style of the generated images. This parameter is only supported for `dall-e-
         else:
             raise ValueError("Invalid parameter to  change")
 
-    def text_to_speech(self, input: str,
-                       model: Literal["tts-1", "tts-1-hd",
-                                      "gpt-4o-mini-tts"] = "tts-1",
-                       voice: str | Literal['alloy', 'ash', 'ballad', 'coral', 'echo',
-                                            'sage', 'shimmer', 'verse', 'marin', 'cedar'] = "alloy",
-                       instructions: str = "NOT_GIVEN",
-                       response_format:  Literal['mp3', 'opus',
-                                                 'aac', 'flac', 'wav', 'pcm'] = "wav",
-                       speed: float = 1,
-                       play: bool = True,
-                       save_to_file_path: str | None = None):
+    def text_to_speech(
+        self,
+        input: str,
+        model: Literal["tts-1", "tts-1-hd", "gpt-4o-mini-tts"] = "tts-1",
+        voice: (
+            str
+            | Literal[
+                "alloy",
+                "ash",
+                "ballad",
+                "coral",
+                "echo",
+                "sage",
+                "shimmer",
+                "verse",
+                "marin",
+                "cedar",
+            ]
+        ) = "alloy",
+        instructions: str = "NOT_GIVEN",
+        response_format: Literal["mp3", "opus", "aac", "flac", "wav", "pcm"] = "wav",
+        speed: float = 1,
+        play: bool = True,
+        save_to_file_path: str | None = None,
+    ):
         """
         Convert text to speech
 
@@ -464,7 +506,7 @@ The style of the generated images. This parameter is only supported for `dall-e-
             "voice": voice,
             "instructions": instructions,
             "response_format": response_format,
-            "speed": speed
+            "speed": speed,
         }
 
         respo = self.client.audio.speech.create(**params)
@@ -478,7 +520,9 @@ The style of the generated images. This parameter is only supported for `dall-e-
 
         else:
             if play:
-                with tempfile.NamedTemporaryFile(delete=False, suffix="." + response_format, delete_on_close=False) as f:
+                with tempfile.NamedTemporaryFile(
+                    delete=False, suffix="." + response_format, delete_on_close=False
+                ) as f:
                     respo.write_to_file(f.name)
                     f.flush()
                     f.close()
@@ -490,23 +534,39 @@ The style of the generated images. This parameter is only supported for `dall-e-
         if response_format != "wav" and play:
             print("Only wav format is supported for playing audio")
 
-    def full_text_to_speech(self, input: str,
-                            conv_id: str | Conversation | bool | None = True,
-                            max_output_tokens: int | None = None,
-                            store: bool | None = False,
-                            web_search: bool | None = None,
-                            code_interpreter: bool | None = None,
-                            file_search: list[str] | None = None,
-                            tools_required: Literal['none', 'auto', 'required'] = "auto", model: Literal["tts-1", "tts-1-hd", "gpt-4o-mini-tts"] = "tts-1",
-                            voice: str | Literal['alloy', 'ash', 'ballad', 'coral', 'echo',
-                                                 'sage', 'shimmer', 'verse', 'marin', 'cedar'] = "alloy",
-                            instructions: str = "NOT_GIVEN",
-                            response_format:  Literal['mp3', 'opus',
-                                                      'aac', 'flac', 'wav', 'pcm'] = "wav",
-                            speed: float = 1,
-                            play: bool = True,
-                            print_response: bool = True,
-                            save_to_file_path: str | None = None) -> str:
+    def full_text_to_speech(
+        self,
+        input: str,
+        conv_id: str | Conversation | bool | None = True,
+        max_output_tokens: int | None = None,
+        store: bool | None = False,
+        web_search: bool | None = None,
+        code_interpreter: bool | None = None,
+        file_search: list[str] | None = None,
+        tools_required: Literal["none", "auto", "required"] = "auto",
+        model: Literal["tts-1", "tts-1-hd", "gpt-4o-mini-tts"] = "tts-1",
+        voice: (
+            str
+            | Literal[
+                "alloy",
+                "ash",
+                "ballad",
+                "coral",
+                "echo",
+                "sage",
+                "shimmer",
+                "verse",
+                "marin",
+                "cedar",
+            ]
+        ) = "alloy",
+        instructions: str = "NOT_GIVEN",
+        response_format: Literal["mp3", "opus", "aac", "flac", "wav", "pcm"] = "wav",
+        speed: float = 1,
+        play: bool = True,
+        print_response: bool = True,
+        save_to_file_path: str | None = None,
+    ) -> str:
         """
         This is the full text to speech function.
         Args:
@@ -551,7 +611,7 @@ The style of the generated images. This parameter is only supported for `dall-e-
             "web_search": web_search,
             "code_interpreter": code_interpreter,
             "file_search": file_search,
-            "tools_required": tools_required
+            "tools_required": tools_required,
         }
 
         resp = self.chat(**param)
@@ -564,7 +624,7 @@ The style of the generated images. This parameter is only supported for `dall-e-
             "speed": speed,
             "play": play,
             "save_to_file_path": save_to_file_path,
-            "input": resp
+            "input": resp,
         }
 
         if print_response:
@@ -573,11 +633,32 @@ The style of the generated images. This parameter is only supported for `dall-e-
 
         return resp
 
-    def speech_to_text(self, mode: Literal["vad", "keyboard"] | Seconds = "vad", model: Literal['tiny.en', 'tiny', 'base.en', 'base', 'small.en', 'small', 'medium.en', 'medium', 'large-v1', 'large-v2', 'large-v3', 'large', 'large-v3-turbo', 'turbo'] = "base",
-                       aggressive: VadAgressiveness = 2,
-                       chunk_duration_ms: int = 30, log_directions: bool = False):
-        bobert = stt.STT(model=model, aggressive=aggressive,
-                         chunk_duration_ms=chunk_duration_ms)
+    def speech_to_text(
+        self,
+        mode: Literal["vad", "keyboard"] | Seconds = "vad",
+        model: Literal[
+            "tiny.en",
+            "tiny",
+            "base.en",
+            "base",
+            "small.en",
+            "small",
+            "medium.en",
+            "medium",
+            "large-v1",
+            "large-v2",
+            "large-v3",
+            "large",
+            "large-v3-turbo",
+            "turbo",
+        ] = "base",
+        aggressive: VadAgressiveness = 2,
+        chunk_duration_ms: int = 30,
+        log_directions: bool = False,
+    ):
+        bobert = stt.STT(
+            model=model, aggressive=aggressive, chunk_duration_ms=chunk_duration_ms
+        )
 
         if mode == "keyboard":
             bob = bobert.record_with_keyboard(log=log_directions)
@@ -603,8 +684,9 @@ The style of the generated images. This parameter is only supported for `dall-e-
 
 
 if __name__ == "__main__":
-    bob: Assistant = Assistant(api_key=None, model="gpt-4o",
-                               system_prompt="You are a helpful assistant.")
+    bob: Assistant = Assistant(
+        api_key=None, model="gpt-4o", system_prompt="You are a helpful assistant."
+    )
 
     # Define schema + function
     while True:
