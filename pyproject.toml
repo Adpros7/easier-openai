@@ -35,6 +35,7 @@ dependencies = [
   "pygame>=2.5.0",
   "huggingface-hub>=0.35.1",
   "shed>=2025.6.1",
+  "pillow>=11.3.0",
 ]
 
 [project.optional-dependencies]

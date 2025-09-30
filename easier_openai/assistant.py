@@ -1,8 +1,11 @@
 import base64
+from io import BytesIO
 import json
 import os
 import tempfile
 import types
+import binascii
+from urllib.parse import urlparse
 import warnings
 from os import getenv
 from typing import Literal, TypeAlias, Unpack
@@ -18,6 +21,7 @@ from openai.types.vector_store import VectorStore
 from pygame import mixer
 from syntaxmod import wait_until
 from typing_extensions import TypedDict
+from PIL import Image
 
 warnings.filterwarnings("ignore")
 
@@ -29,6 +33,7 @@ FunctionSpec: TypeAlias = dict[str, str | Parameters]
 ToolSpec: TypeAlias = dict[str, str | FunctionSpec]
 
 Seconds: TypeAlias = int
+
 
 Optional_Parameters_Description: TypeAlias = dict[str, str]
 """give a dict like this: {'param1': 'description1', 'param2': 'description2'}"""
@@ -120,6 +125,41 @@ class Assistant:
                 )
         return vector_store_create, vector_store, vector
 
+    class Openai_Images:
+        def __init__(self, image: str):
+            """ Parameters:
+            image (str): The image to use for OpenAI API requests Can be Base64, Filepath, or URL.
+            """
+            def classify_input(s: str) -> Literal["url", "b64", "filepath", "unknown"]:
+                # Check URL
+                parsed = urlparse(s)
+                if parsed.scheme in ("http", "https") and parsed.netloc:
+                    return "url"
+
+                # Check Base64
+                try:
+                    decoded = base64.b64decode(s, validate=True)
+                    reencoded = base64.b64encode(decoded).decode("ascii").rstrip("=")
+                    stripped = s.rstrip("=")
+                    if reencoded == stripped:
+                        return "b64"
+                except (binascii.Error, ValueError):
+                    pass
+
+                # Check Filepath
+                if os.path.isfile(s):
+                    return "filepath"
+
+                return "unknown"
+
+            self.image = [image, "hoi"]
+            self.type = classify_input(image)
+            if self.type == "unknown":
+                raise ValueError("Image must be a Base64, Filepath, or URL.")
+            
+            else:
+                self.image[1] = self.type
+            
     def chat(
         self,
         input: str,
@@ -693,3 +733,7 @@ if __name__ == "__main__":
         inputa = input("Enter text: ")
         h = bob.chat(inputa)
         print(h)
+
+
+
+
