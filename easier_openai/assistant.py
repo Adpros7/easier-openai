@@ -51,7 +51,8 @@ class Assistant:
         system_prompt: str = "",
         default_conversation: Conversation | bool = True,
         temperature: float | None = None,
-        reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = None,
+        reasoning_effort: Literal["minimal",
+                                  "low", "medium", "high"] | None = None,
         summary_length: Literal["auto", "concise", "detailed"] | None = None,
     ):
         """
@@ -92,7 +93,8 @@ class Assistant:
         self.summary_length = summary_length
         self.playbacker = mixer.init()
         if reasoning_effort and summary_length:
-            self.reasoning = Reasoning(effort=reasoning_effort, summary=summary_length)
+            self.reasoning = Reasoning(
+                effort=reasoning_effort, summary=summary_length)
 
         else:
             self.reasoning = None
@@ -110,13 +112,16 @@ class Assistant:
         self, list_of_files: list[str]
     ) -> tuple[VectorStore, VectorStore, VectorStores]:
         if not isinstance(list_of_files, list) or len(list_of_files) == 0:
-            raise ValueError("list_of_files must be a non-empty list of file paths.")
+            raise ValueError(
+                "list_of_files must be a non-empty list of file paths.")
         for filepath in list_of_files:
             if not os.path.exists(filepath):
                 raise FileNotFoundError(f"File not found: {filepath}")
 
-        vector_store_create = self.client.vector_stores.create(name="vector_store")
-        vector_store = self.client.vector_stores.retrieve(vector_store_create.id)
+        vector_store_create = self.client.vector_stores.create(
+            name="vector_store")
+        vector_store = self.client.vector_stores.retrieve(
+            vector_store_create.id)
         vector = self.client.vector_stores
         for filepath in list_of_files:
             with open(filepath, "rb") as f:
@@ -126,20 +131,21 @@ class Assistant:
         return vector_store_create, vector_store, vector
 
     class Openai_Images:
-        def __init__(self, image: str):
+        def _(self, image: str):
             """ Parameters:
             image (str): The image to use for OpenAI API requests Can be Base64, Filepath, or URL.
             """
-            def classify_input(s: str) -> Literal["url", "b64", "filepath", "unknown"]:
+            def classify_input(s: str) -> Literal["image_url", "b64", "filepath", "unknown"]:
                 # Check URL
                 parsed = urlparse(s)
                 if parsed.scheme in ("http", "https") and parsed.netloc:
-                    return "url"
+                    return "image_url"
 
                 # Check Base64
                 try:
                     decoded = base64.b64decode(s, validate=True)
-                    reencoded = base64.b64encode(decoded).decode("ascii").rstrip("=")
+                    reencoded = base64.b64encode(
+                        decoded).decode("utf-8").rstrip("=")
                     stripped = s.rstrip("=")
                     if reencoded == stripped:
                         return "b64"
@@ -156,10 +162,10 @@ class Assistant:
             self.type = classify_input(image)
             if self.type == "unknown":
                 raise ValueError("Image must be a Base64, Filepath, or URL.")
-            
+
             else:
                 self.image[1] = self.type
-            
+
     def chat(
         self,
         input: str,
@@ -213,13 +219,7 @@ class Assistant:
         if not convo:
             convo = False
         params_for_response = {
-            "input": (
-                input
-                if valid_json == {}
-                else input
-                + "RESPOND ONLY IN VALID JSON FORMAT LIKE THIS: "
-                + json.dumps(valid_json)
-            ),
+            "input": input if valid_json == {} else input + "RESPOND ONLY IN VALID JSON FORMAT LIKE THIS: " + json.dumps(valid_json),
             "instructions": self.system_prompt,
             "conversation": convo,
             "max_output_tokens": max_output_tokens,
@@ -228,6 +228,7 @@ class Assistant:
             "reasoning": self.reasoning if self.reasoning is not None else None,
             "tools": [],
         }
+        
 
         if web_search:
             params_for_response["tools"].append({"type": "web_search"})
@@ -502,7 +503,8 @@ class Assistant:
             ]
         ) = "alloy",
         instructions: str = "NOT_GIVEN",
-        response_format: Literal["mp3", "opus", "aac", "flac", "wav", "pcm"] = "wav",
+        response_format: Literal["mp3", "opus",
+                                 "aac", "flac", "wav", "pcm"] = "wav",
         speed: float = 1,
         play: bool = True,
         save_to_file_path: str | None = None,
@@ -601,7 +603,8 @@ class Assistant:
             ]
         ) = "alloy",
         instructions: str = "NOT_GIVEN",
-        response_format: Literal["mp3", "opus", "aac", "flac", "wav", "pcm"] = "wav",
+        response_format: Literal["mp3", "opus",
+                                 "aac", "flac", "wav", "pcm"] = "wav",
         speed: float = 1,
         play: bool = True,
         print_response: bool = True,
@@ -696,19 +699,19 @@ class Assistant:
         chunk_duration_ms: int = 30,
         log_directions: bool = False,
     ):
-        bobert = stt.STT(
+        stt_model = stt.STT(
             model=model, aggressive=aggressive, chunk_duration_ms=chunk_duration_ms
         )
 
         if mode == "keyboard":
-            bob = bobert.record_with_keyboard(log=log_directions)
+            result = stt_model.record_with_keyboard(log=log_directions)
         elif mode == "vad":
-            bob = bobert.record_with_vad(log=log_directions)
+            result = stt_model.record_with_vad(log=log_directions)
 
         elif isinstance(mode, Seconds):
-            bob = bobert.record_for_seconds(mode)
+            result = stt_model.record_for_seconds(mode)
 
-        return bob
+        return result
 
     class __mass_update_helper(TypedDict, total=False):
         model: ResponsesModel
@@ -733,7 +736,3 @@ if __name__ == "__main__":
         inputa = input("Enter text: ")
         h = bob.chat(inputa)
         print(h)
-
-
-
-
