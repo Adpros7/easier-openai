@@ -29,6 +29,11 @@ easier_gpt.egg-info/SOURCES.txt
 easier_gpt.egg-info/top_level.txt
 /easier_openai.egg-info
 /dist
-.gitignore
 /easier_openai/__pycache__
 generate_key_literals.py
+/easier_openai/tempCodeRunnerFile.py
+easier_openai/tempCodeRunnerFile.py
+easier_openai/tempCodeRunnerFile.py
+easier_openai\tempCodeRunnerFile.py
+easier_openai/tempCodeRunnerFile.py
+**/tempCodeRunnerFile.py
