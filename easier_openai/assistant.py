@@ -24,6 +24,7 @@ from PIL import Image
 from pygame import mixer
 from syntaxmod import wait_until
 from typing_extensions import TypedDict
+from Openai_Images import Openai_Images
 
 warnings.filterwarnings("ignore")
 
@@ -131,6 +132,7 @@ class Assistant:
         self,
         input: str,
         conv_id: str | None | Conversation | bool = True,
+        images: list[Openai_Images] = [],
         max_output_tokens: int | None = None,
         store: bool = False,
         web_search: bool = False,
@@ -179,14 +181,25 @@ class Assistant:
         convo = self.conversation_id if conv_id is True else str(conv_id)
         if not convo:
             convo = False
+
         params_for_response = {
-            "input": (
-                input
-                if valid_json == {}
-                else input
-                + "RESPOND ONLY IN VALID JSON FORMAT LIKE THIS: "
-                + json.dumps(valid_json)
-            ),
+            "input": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": (
+                                input
+                                if valid_json == {}
+                                else input
+                                + "RESPOND ONLY IN VALID JSON FORMAT LIKE THIS: "
+                                + json.dumps(valid_json)
+                            ),
+                        }
+                    ],
+                }
+            ],
             "instructions": self.system_prompt,
             "conversation": convo,
             "max_output_tokens": max_output_tokens,
@@ -688,7 +701,6 @@ class Assistant:
     def mass_update(self, **__mass_update_helper: Unpack[__mass_update_helper]):
         for key, value in __mass_update_helper.items():
             setattr(self, key, value)
-
 
 
 if __name__ == "__main__":
