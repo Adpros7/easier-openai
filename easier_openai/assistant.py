@@ -209,6 +209,19 @@ class Assistant:
             "tools": [],
         }
 
+        if images:
+            for i in images:
+                params_for_response["input"][0]["content"].append(
+                    {
+                        "type": "input_image",
+                        ("file_id" if i.type is "filepath" else "image_url"): (
+                            i.image[0]
+                            if not i.type is "Base64"
+                            else f"data:image/{i.image[2]}; base64, {i.image[0]}"
+                        ),
+                    }
+                )
+
         if web_search:
             params_for_response["tools"].append({"type": "web_search"})
 
