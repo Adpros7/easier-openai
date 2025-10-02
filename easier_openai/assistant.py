@@ -3,11 +3,12 @@ import binascii
 import json
 import os
 import tempfile
+from turtle import pu
 import types
 import warnings
 from io import BytesIO
 from os import getenv
-from typing import Literal, TypeAlias, Unpack
+from typing import Any, Literal, TypeAlias, Unpack
 from urllib.parse import urlparse
 
 import openai_stt as stt
@@ -125,44 +126,6 @@ class Assistant:
                     vector_store_id=vector_store_create.id, file=f
                 )
         return vector_store_create, vector_store, vector
-
-    class Openai_Images:
-        def _(self, image: str):
-            """Parameters:
-            image (str): The image to use for OpenAI API requests Can be Base64, Filepath, or URL.
-            """
-
-            def classify_input(
-                s: str,
-            ) -> Literal["image_url", "b64", "filepath", "unknown"]:
-                # Check URL
-                parsed = urlparse(s)
-                if parsed.scheme in ("http", "https") and parsed.netloc:
-                    return "image_url"
-
-                # Check Base64
-                try:
-                    decoded = base64.b64decode(s, validate=True)
-                    reencoded = base64.b64encode(decoded).decode("utf-8").rstrip("=")
-                    stripped = s.rstrip("=")
-                    if reencoded == stripped:
-                        return "b64"
-                except (binascii.Error, ValueError):
-                    pass
-
-                # Check Filepath
-                if os.path.isfile(s):
-                    return "filepath"
-
-                return "unknown"
-
-            self.image = [image, "hoi"]
-            self.type = classify_input(image)
-            if self.type == "unknown":
-                raise ValueError("Image must be a Base64, Filepath, or URL.")
-
-            else:
-                self.image[1] = self.type
 
     def chat(
         self,
@@ -725,6 +688,60 @@ class Assistant:
     def mass_update(self, **__mass_update_helper: Unpack[__mass_update_helper]):
         for key, value in __mass_update_helper.items():
             setattr(self, key, value)
+
+
+class Openai_Images(Assistant):
+    def __init__(self, image: str):
+        """Parameters:
+        image (str): The image to use for OpenAI API requests Can be Base64, Filepath, or URL.
+        """
+
+        def _classify_input(
+            s: str,
+        ) -> Literal["image_url", "Base64", "filepath", "unknown"]:
+            # Check URL
+            parsed = urlparse(s)
+            if parsed.scheme in ("http", "https") and parsed.netloc:
+                return "image_url"
+
+            # Check Base64
+            try:
+                decoded = base64.b64decode(s, validate=True)
+                reencoded = base64.b64encode(decoded).decode("utf-8").rstrip("=")
+                stripped = s.rstrip("=")
+                if reencoded == stripped:
+                    return "Base64"
+            except (binascii.Error, ValueError):
+                pass
+
+            # Check Filepath
+            if os.path.isfile(s):
+                return "filepath"
+
+            return "unknown"
+
+        self.image = [image, "type", Any]
+        self.type = _classify_input(image)
+        if self.type == "unknown":
+            raise ValueError("Image must be a Base64, Filepath, or URL.")
+
+        else:
+            self.image[1] = self.type
+            if self.type == "Base64":
+                self.image[2] = image.split(".")[1].lower().removeprefix(".")
+                
+                if self.image[2] not in ("jpg", "jpeg", "png", "gif", "webp"):
+                    raise ValueError("Image must be a JPEG, PNG, GIF, or WEBP.")
+                
+                else:
+                    if self.image[2] == "jpg":
+                        self.image[2] = "jpeg"
+                        
+            if self.type == "filepath":
+                with open(self.image[0], "rb") as f:
+                    file = self.client.files.create(file=f, purpose="vision")
+                    
+                self.image[2] = file
 
 
 if __name__ == "__main__":
