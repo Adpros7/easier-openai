@@ -2,18 +2,27 @@
 
 from importlib import metadata as _metadata
 
-from .assistant import Assistant  # re-export primary helper
-from .assistant import Seconds
-from .assistant import VadAgressiveness
+from .assistant import Assistant, Seconds, VadAgressiveness
+from .Images import Openai_Images
 from ez_openai.decorator import openai_function  # convenience decorator re-export
 
-__all__ = ["Assistant", "openai_function", "__version__", "__description__", "Seconds", "VadAgressiveness"]
+__all__ = [
+    "Assistant",
+    "openai_function",
+    "__version__",
+    "__description__",
+    "Seconds",
+    "VadAgressiveness",
+    "Openai_Images",
+]
 
 _DISTRIBUTION_NAME = "easier-openai"
 
 try:
     __version__ = _metadata.version(_DISTRIBUTION_NAME)
-except _metadata.PackageNotFoundError:  # Running from a source tree without installed metadata
+except (
+    _metadata.PackageNotFoundError
+):  # Running from a source tree without installed metadata
     __version__ = "0.3.0"
 
 try:

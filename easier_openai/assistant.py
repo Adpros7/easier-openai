@@ -219,7 +219,7 @@ class Assistant:
                     {
                         "type": "input_image",
                         ("file_id" if i.type == "filepath" else "image_url"): (
-                            i.image[0]
+                            i.image[2]
                             if not i.type == "Base64"
                             else f"data:image/{i.image[2]}; base64, {i.image[0]}"
                         ),
@@ -282,7 +282,7 @@ class Assistant:
 
         except Exception as e:
             print("Error creating response: \n", e)
-            print("\nLine Number : ", e.__traceback__.tb_lineno if isinstance(e, types.TracebackType) else 284) # type: ignore
+            print("\nLine Number : ", e.__traceback__.tb_lineno if isinstance(e, types.TracebackType) else 284)  # type: ignore
             returns_flag = False
 
         finally:
@@ -732,9 +732,8 @@ if __name__ == "__main__":
     )
 
     from easier_openai.Images import Openai_Images
-    pic = Openai_Images(
-        r"bannana.png"
-    )
+
+    pic = Openai_Images(r"C:\Users\prani\Coding\AI\ChatPPT\Easy-gpt\tests\bannana.png")
     # Define schema + function
     while True:
         inputa = input("Enter text: ")

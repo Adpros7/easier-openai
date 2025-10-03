@@ -14,6 +14,7 @@ class Openai_Images(Assistant):
         """
 
         super().__init__()
+
         def _classify_input(
             s: str,
         ) -> Literal["image_url", "Base64", "filepath", "unknown"]:
@@ -59,4 +60,4 @@ class Openai_Images(Assistant):
                 with open(self.image[0], "rb") as f:
                     file = self.client.files.create(file=f, purpose="vision")
 
-                self.image[2] = file
+                self.image[2] = file.id
