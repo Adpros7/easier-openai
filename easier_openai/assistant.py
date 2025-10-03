@@ -433,7 +433,7 @@ class Assistant:
             if not file_name_if_make_file.endswith("." + output_format):
                 name = file_name_if_make_file + "." + output_format
             else:
-                name = file_name_if_make_filew
+                name = file_name_if_make_file
             with open(name, "wb") as f:
                 f.write(base64.b64decode(image_data))
 
