@@ -1,3 +1,4 @@
+from __future__ import annotations
 import base64
 import binascii
 import json
@@ -8,9 +9,8 @@ import types
 import warnings
 from io import BytesIO
 from os import getenv
-from typing import Any, Literal, TypeAlias, Unpack
+from typing import Any, Literal, TypeAlias, Unpack, TYPE_CHECKING
 from urllib.parse import urlparse
-
 import openai_stt as stt
 import simpleaudio as sa
 from ez_openai import Assistant as asss
@@ -24,7 +24,6 @@ from PIL import Image
 from pygame import mixer
 from syntaxmod import wait_until
 from typing_extensions import TypedDict
-from Openai_Images import Openai_Images
 
 warnings.filterwarnings("ignore")
 
@@ -46,11 +45,15 @@ VadAgressiveness: TypeAlias = Literal[1, 2, 3]
 Number: TypeAlias = int | float
 
 
+if TYPE_CHECKING:
+    from .Images import Openai_Images
+
+
 class Assistant:
     def __init__(
         self,
-        api_key: str | None,
-        model: ResponsesModel,
+        api_key: str | None = None,
+        model: ResponsesModel = "gpt-4o-latest",
         system_prompt: str = "",
         default_conversation: Conversation | bool = True,
         temperature: float | None = None,
@@ -132,7 +135,7 @@ class Assistant:
         self,
         input: str,
         conv_id: str | None | Conversation | bool = True,
-        images: list[Openai_Images] = [],
+        images: list["Openai_Images"] = [],
         max_output_tokens: int | None = None,
         store: bool = False,
         web_search: bool = False,
@@ -182,6 +185,7 @@ class Assistant:
         if not convo:
             convo = False
 
+        returns_flag = True
         params_for_response = {
             "input": [
                 {
@@ -214,9 +218,9 @@ class Assistant:
                 params_for_response["input"][0]["content"].append(
                     {
                         "type": "input_image",
-                        ("file_id" if i.type is "filepath" else "image_url"): (
+                        ("file_id" if i.type == "filepath" else "image_url"): (
                             i.image[0]
-                            if not i.type is "Base64"
+                            if not i.type == "Base64"
                             else f"data:image/{i.image[2]}; base64, {i.image[0]}"
                         ),
                     }
@@ -278,6 +282,8 @@ class Assistant:
 
         except Exception as e:
             print("Error creating response: \n", e)
+            print("\nLine Number : ", e.__traceback__.tb_lineno if isinstance(e, types.TracebackType) else 284) # type: ignore
+            returns_flag = False
 
         finally:
             if store:
@@ -286,9 +292,13 @@ class Assistant:
             if file_search:
                 vector[2].delete(vector[0].id)
 
-            if return_full_response:
-                return resp
-            return resp.output_text
+            if returns_flag:
+                if return_full_response:
+                    return resp
+                return resp.output_text
+
+            else:
+                return ""
 
     # def function_chat(self, input: str, func: list[Callable], descriptions: type[dict[str, str]]= dict[str, str], temprature: float | None = None):
     #     if temprature is None:
@@ -721,8 +731,12 @@ if __name__ == "__main__":
         api_key=None, model="gpt-4o", system_prompt="You are a helpful assistant."
     )
 
+    from easier_openai.Images import Openai_Images
+    pic = Openai_Images(
+        r"bannana.png"
+    )
     # Define schema + function
     while True:
         inputa = input("Enter text: ")
-        h = bob.chat(inputa)
+        h = bob.chat(inputa, images=[pic])
         print(h)

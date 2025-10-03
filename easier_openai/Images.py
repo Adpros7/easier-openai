@@ -5,6 +5,7 @@ from typing import Any, Literal
 from urllib.parse import urlparse
 from easier_openai import Assistant
 
+
 class Openai_Images(Assistant):
 
     def __init__(self, image: str):
@@ -12,7 +13,7 @@ class Openai_Images(Assistant):
         image (str): The image to use for OpenAI API requests Can be Base64, Filepath, or URL.
         """
 
-        
+        super().__init__()
         def _classify_input(
             s: str,
         ) -> Literal["image_url", "Base64", "filepath", "unknown"]:
@@ -23,7 +24,7 @@ class Openai_Images(Assistant):
 
             # Check Base64
             try:
-                decoded = base64.b64decode(s, validate=True)
+                decoded = base64.b64decode(s=s, validate=True)
                 reencoded = base64.b64encode(decoded).decode("utf-8").rstrip("=")
                 stripped = s.rstrip("=")
                 if reencoded == stripped:
