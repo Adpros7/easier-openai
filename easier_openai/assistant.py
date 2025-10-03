@@ -53,7 +53,7 @@ class Assistant:
     def __init__(
         self,
         api_key: str | None = None,
-        model: ResponsesModel = "gpt-4o-latest",
+        model: ResponsesModel = "chatgpt-4o-latest",
         system_prompt: str = "",
         default_conversation: Conversation | bool = True,
         temperature: float | None = None,
@@ -433,7 +433,7 @@ class Assistant:
             if not file_name_if_make_file.endswith("." + output_format):
                 name = file_name_if_make_file + "." + output_format
             else:
-                name = file_name_if_make_file
+                name = file_name_if_make_filew
             with open(name, "wb") as f:
                 f.write(base64.b64decode(image_data))
 
