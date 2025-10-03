@@ -360,7 +360,7 @@ class Assistant:
         style: Literal["vivid", "natural"] | None = None,
         return_base64: bool = False,
         make_file: bool = False,
-        file_name_if_make_file: str = "generated_image",
+        file_name_if_make_file: str = "",
     ):
         """**prompt**
         A text description of the desired image(s). The maximum length is 32000 characters for `gpt-image-1`, 1000 characters for `dall-e-2` and 4000 characters for `dall-e-3`.
@@ -430,7 +430,10 @@ class Assistant:
                 f.write(base64.b64decode(image_data))
         else:
             image_data = img.data[0].b64_json
-            name = file_name_if_make_file + "." + output_format
+            if not file_name_if_make_file.endswith("." + output_format):
+                name = file_name_if_make_file + "." + output_format
+            else:
+                name = file_name_if_make_file
             with open(name, "wb") as f:
                 f.write(base64.b64decode(image_data))
 
