@@ -39,8 +39,6 @@ ToolSpec: TypeAlias = dict[str, str | FunctionSpec]
 Seconds: TypeAlias = int
 
 
-Optional_Parameters_Description: TypeAlias = dict[str, str]
-"""give a dict like this: {'param1': 'description1', 'param2': 'description2'}"""
 VadAgressiveness: TypeAlias = Literal[1, 2, 3]
 
 
@@ -146,18 +144,17 @@ class Assistant:
         file_search_max_searches: int | None = None,
         tools_required: Literal["none", "auto", "required"] = "auto",
         custom_tools: list[types.FunctionType] = [],
-        if_custom_tools_params_description: Optional_Parameters_Description = {},
         return_full_response: bool = False,
         valid_json: dict = {},
-        force_valid_json: bool = False,
         stream: bool = False,
         text_stream: bool = False,
-    ) -> str: # type: ignore
+    ) -> str:  # type: ignore
         """
-        This is the chat function
+        Description:
+            This is the chat function
 
         Args:
-            input: The input text. Defaults to None.
+            input: The input text.
             conv_id: The conversation ID. Defaults to True. Put the conversation ID here. If you want to create a new conversation, put True.
             max_output_tokens: The maximum output tokens. Defaults to None.
             store: Whether to store the conversation. Defaults to False.
@@ -289,7 +286,6 @@ class Assistant:
 
             elif stream:
                 resp = self.client.responses.create(**params_for_response)
-            
 
         except Exception as e:
             print("Error creating response: \n", e)
@@ -297,16 +293,14 @@ class Assistant:
             returns_flag = False
 
         finally:
-            
+
             if text_stream:
-                with self.client.responses.stream(
-                     **params_for_response
-                ) as streamer:
+                with self.client.responses.stream(**params_for_response) as streamer:
                     for event in streamer:
                         if event.type == "response.output_text.delta":
-                            yield event.delta # type: ignore
+                            yield event.delta  # type: ignore
                         elif event.type == "response.completed":
-                            yield "done" # type: ignore
+                            yield "done"  # type: ignore
             if store:
                 self.conversation = resp.conversation
 
@@ -766,4 +760,3 @@ if __name__ == "__main__":
                 print("\n---done---")
             else:
                 print(e, end="")
-        
