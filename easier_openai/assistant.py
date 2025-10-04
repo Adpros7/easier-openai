@@ -135,22 +135,13 @@ class Assistant:
     
     def openai_function(self, func: types.FunctionType) -> dict:
         """
-        Converts a plain function into a structured JSON-like schema
-        derived from its docstring (Args:, Params:, Description:).
+        Decorator for OpenAI functions.
 
-        Returns a dict like:
-        {
-            "type": "function",
-            "name": "function_name",
-            "description": "Short description",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "arg": {"type": "string", "description": "..."},
-                },
-                "required": ["arg"]
-            }
-        }
+        Args:
+            func (types.FunctionType): The function to decorate.
+
+        Returns:
+            dict: The OpenAI function dictionary.
         """
         if not isinstance(func, types.FunctionType):
             raise TypeError("Expected a plain function (types.FunctionType)")
