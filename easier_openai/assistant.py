@@ -304,9 +304,9 @@ class Assistant:
                 ) as streamer:
                     for event in streamer:
                         if event.type == "response.output_text.delta":
-                            yield event.delta
+                            yield event.delta # type: ignore
                         elif event.type == "response.completed":
-                            yield "done"
+                            yield "done" # type: ignore
             if store:
                 self.conversation = resp.conversation
 
