@@ -243,7 +243,6 @@ class Assistant:
             file_search_max_searches: The if file search max searches. Defaults to None.
             return_full_response: Whether to return the full response. Defaults to False.
             valid_json: The valid json. Defaults to {}.
-            force_valid_json: The force valid json. Defaults to False.
 
         Returns:
             The response text.
@@ -348,11 +347,14 @@ class Assistant:
             params_for_response["tool_choice"] = "required"
 
         if custom_tools:
-            params_for_response["tools"].append(
-                {
-                    "type": "custom",
-                }
-            )
+            for tool in custom_tools:
+                try:
+                    params_for_response["tools"].append(tool.schema)
+                except Exception as e:
+                    print("Error adding custom tool: \n", e)
+                    print("\nLine Number : ", e.__traceback__.tb_lineno if isinstance(e, types.TracebackType) else 355)  # type: ignore
+                    continue
+                    
 
         params_for_response = {
             k: v for k, v in params_for_response.items() if v is not None
@@ -366,7 +368,7 @@ class Assistant:
 
         except Exception as e:
             print("Error creating response: \n", e)
-            print("\nLine Number : ", e.__traceback__.tb_lineno if isinstance(e, types.TracebackType) else 284)  # type: ignore
+            print("\nLine Number : ", e.__traceback__.tb_lineno if isinstance(e, types.TracebackType) else 370)  # type: ignore
             returns_flag = False
 
         finally:
