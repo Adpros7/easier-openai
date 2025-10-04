@@ -141,7 +141,7 @@ class Assistant:
         web_search: bool = False,
         code_interpreter: bool = False,
         file_search: list[str] = [],
-        if_file_search_max_searches: int | None = None,
+        file_search_max_searches: int | None = None,
         tools_required: Literal["none", "auto", "required"] = "auto",
         custom_tools: list[types.FunctionType] = [],
         if_custom_tools_params_description: Optional_Parameters_Description = {},
@@ -162,7 +162,7 @@ class Assistant:
             file_search: The file search. Defaults to [].
             tools_required: The tools required. Defaults to "auto".
             custom_tools: The custom tools. Defaults to [].
-            if_file_search_max_searches: The if file search max searches. Defaults to None.
+            file_search_max_searches: The if file search max searches. Defaults to None.
             return_full_response: Whether to return the full response. Defaults to False.
             valid_json: The valid json. Defaults to {}.
             force_valid_json: The force valid json. Defaults to False.
@@ -237,7 +237,7 @@ class Assistant:
         if file_search:
             vector = self._convert_filepath_to_vector(file_search)
 
-            if if_file_search_max_searches is None:
+            if file_search_max_searches is None:
 
                 params_for_response["tools"].append(
                     {"type": "file_search", "vector_store_ids": vector[1].id}
@@ -248,7 +248,7 @@ class Assistant:
                     {
                         "type": "file_search",
                         "vector_store_ids": vector[1].id,
-                        "max_searches": if_file_search_max_searches,
+                        "max_searches": file_search_max_searches,
                     }
                 )
 
