@@ -1,16 +1,18 @@
 from __future__ import annotations
+
 import base64
 import binascii
 import json
 import os
 import tempfile
-from turtle import pu
 import types
 import warnings
 from io import BytesIO
 from os import getenv
-from typing import Any, Literal, TypeAlias, Unpack, TYPE_CHECKING
+from turtle import pu
+from typing import TYPE_CHECKING, Any, Generator, Literal, TypeAlias, Unpack
 from urllib.parse import urlparse
+
 import openai_stt as stt
 import simpleaudio as sa
 from ez_openai import Assistant as asss
@@ -149,7 +151,8 @@ class Assistant:
         valid_json: dict = {},
         force_valid_json: bool = False,
         stream: bool = False,
-    ) -> str:
+        text_stream: bool = False,
+    ) -> str: # type: ignore
         """
         This is the chat function
 
@@ -284,8 +287,9 @@ class Assistant:
             if not stream:
                 resp = self.client.responses.create(**params_for_response)
 
-            else:
+            elif stream:
                 resp = self.client.responses.create(**params_for_response)
+            
 
         except Exception as e:
             print("Error creating response: \n", e)
@@ -293,6 +297,16 @@ class Assistant:
             returns_flag = False
 
         finally:
+            
+            if text_stream:
+                with self.client.responses.stream(
+                     **params_for_response
+                ) as streamer:
+                    for event in streamer:
+                        if event.type == "response.output_text.delta":
+                            yield event.delta
+                        elif event.type == "response.completed":
+                            yield "done"
             if store:
                 self.conversation = resp.conversation
 
@@ -747,5 +761,9 @@ if __name__ == "__main__":
     # Define schema + function
     while True:
         inputa = input("Enter text: ")
-        h = bob.chat(inputa, images=[pic])
-        print(h)
+        for e in bob.chat(inputa, images=[pic], text_stream=True):
+            if e == "done":
+                print("\n---done---")
+            else:
+                print(e, end="")
+        
