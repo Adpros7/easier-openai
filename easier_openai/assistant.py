@@ -148,6 +148,7 @@ class Assistant:
         return_full_response: bool = False,
         valid_json: dict = {},
         force_valid_json: bool = False,
+        stream: bool = False,
     ) -> str:
         """
         This is the chat function
@@ -181,6 +182,7 @@ class Assistant:
 
         ----------
         """
+
         convo = self.conversation_id if conv_id is True else str(conv_id)
         if not convo:
             convo = False
@@ -211,6 +213,7 @@ class Assistant:
             "model": self.model,
             "reasoning": self.reasoning if self.reasoning is not None else None,
             "tools": [],
+            "stream": stream if stream is True else None,
         }
 
         if images:
@@ -278,7 +281,12 @@ class Assistant:
             k: v for k, v in params_for_response.items() if v is not None
         }
         try:
-            resp = self.client.responses.create(**params_for_response)
+            if not stream:
+                resp = self.client.responses.create(**params_for_response)
+
+            else:
+                resp = self.client.responses.create(**params_for_response)
+                
 
         except Exception as e:
             print("Error creating response: \n", e)
@@ -293,7 +301,7 @@ class Assistant:
                 vector[2].delete(vector[0].id)
 
             if returns_flag:
-                if return_full_response:
+                if return_full_response or stream:
                     return resp
                 return resp.output_text
 
