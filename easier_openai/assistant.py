@@ -299,10 +299,6 @@ class Assistant:
                 if return_full_response:
                     return resp
                 
-                try:
-                    resp.__getattribute__("output_text")
-                
-                except AttributeError:
                     
 
             else:
