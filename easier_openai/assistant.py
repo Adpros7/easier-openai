@@ -1,16 +1,18 @@
 from __future__ import annotations
+
 import base64
 import binascii
 import json
 import os
 import tempfile
-from turtle import pu
 import types
 import warnings
 from io import BytesIO
 from os import getenv
-from typing import Any, Literal, TypeAlias, Unpack, TYPE_CHECKING
+from turtle import pu
+from typing import TYPE_CHECKING, Any, Generator, Literal, TypeAlias, Unpack
 from urllib.parse import urlparse
+
 import openai_stt as stt
 import simpleaudio as sa
 from ez_openai import Assistant as asss
@@ -148,7 +150,9 @@ class Assistant:
         return_full_response: bool = False,
         valid_json: dict = {},
         force_valid_json: bool = False,
-    ) -> str:
+        stream: bool = False,
+        text_stream: bool = False,
+    ) -> str: # type: ignore
         """
         This is the chat function
 
@@ -181,6 +185,7 @@ class Assistant:
 
         ----------
         """
+
         convo = self.conversation_id if conv_id is True else str(conv_id)
         if not convo:
             convo = False
@@ -211,6 +216,7 @@ class Assistant:
             "model": self.model,
             "reasoning": self.reasoning if self.reasoning is not None else None,
             "tools": [],
+            "stream": stream if stream is True else None,
         }
 
         if images:
@@ -278,7 +284,12 @@ class Assistant:
             k: v for k, v in params_for_response.items() if v is not None
         }
         try:
-            resp = self.client.responses.create(**params_for_response)
+            if not stream:
+                resp = self.client.responses.create(**params_for_response)
+
+            elif stream:
+                resp = self.client.responses.create(**params_for_response)
+            
 
         except Exception as e:
             print("Error creating response: \n", e)
@@ -286,6 +297,16 @@ class Assistant:
             returns_flag = False
 
         finally:
+            
+            if text_stream:
+                with self.client.responses.stream(
+                     **params_for_response
+                ) as streamer:
+                    for event in streamer:
+                        if event.type == "response.output_text.delta":
+                            yield event.delta # type: ignore
+                        elif event.type == "response.completed":
+                            yield "done" # type: ignore
             if store:
                 self.conversation = resp.conversation
 
@@ -293,7 +314,7 @@ class Assistant:
                 vector[2].delete(vector[0].id)
 
             if returns_flag:
-                if return_full_response:
+                if return_full_response or stream:
                     return resp
                 return resp.output_text
 
@@ -740,5 +761,9 @@ if __name__ == "__main__":
     # Define schema + function
     while True:
         inputa = input("Enter text: ")
-        h = bob.chat(inputa, images=[pic])
-        print(h)
+        for e in bob.chat(inputa, images=[pic], text_stream=True):
+            if e == "done":
+                print("\n---done---")
+            else:
+                print(e, end="")
+        
