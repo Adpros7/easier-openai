@@ -9,7 +9,7 @@ import types
 import warnings
 from io import BytesIO
 from os import getenv
-from typing import Any, Literal, TypeAlias, Unpack, TYPE_CHECKING
+from typing import Any, Generator, Literal, TypeAlias, Unpack, TYPE_CHECKING
 from urllib.parse import urlparse
 import openai_stt as stt
 import simpleaudio as sa
@@ -24,6 +24,8 @@ from PIL import Image
 from pygame import mixer
 from syntaxmod import wait_until
 from typing_extensions import TypedDict
+from openai.resources.responses.responses import Responses
+from openai._streaming import Stream
 
 warnings.filterwarnings("ignore")
 
@@ -149,7 +151,8 @@ class Assistant:
         valid_json: dict = {},
         force_valid_json: bool = False,
         stream: bool = False,
-    ) -> str:
+        text_stream: bool = False,
+    ):
         """
         This is the chat function
 
@@ -281,12 +284,16 @@ class Assistant:
             k: v for k, v in params_for_response.items() if v is not None
         }
         try:
-            if not stream:
+            if not text_stream:
                 resp = self.client.responses.create(**params_for_response)
-
+            
             else:
-                resp = self.client.responses.create(**params_for_response)
-                
+                with self.client.responses.stream(**params_for_response) as resp:
+                    for event in resp:
+                        if event.type == "response.output_text.delta":
+                            yield event.delta
+                        elif event.type == "response.completed":
+                            yield "done"
 
         except Exception as e:
             print("Error creating response: \n", e)
@@ -295,7 +302,8 @@ class Assistant:
 
         finally:
             if store:
-                self.conversation = resp.conversation
+                if isinstance(resp, Responses):
+                    self.conversation = resp.
 
             if file_search:
                 vector[2].delete(vector[0].id)
@@ -303,7 +311,12 @@ class Assistant:
             if returns_flag:
                 if return_full_response or stream:
                     return resp
-                return resp.output_text
+                
+                try:
+                    resp.__getattribute__("output_text")
+                
+                except AttributeError:
+                    
 
             else:
                 return ""
@@ -738,6 +751,8 @@ class Assistant:
 
 
 if __name__ == "__main__":
+    from warnings import filterwarnings
+    filterwarnings("ignore")
     bob: Assistant = Assistant(
         api_key=None, model="gpt-4o", system_prompt="You are a helpful assistant."
     )
