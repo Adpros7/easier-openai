@@ -1,6 +1,6 @@
 # Easier OpenAI
 
-Easier OpenAI wraps the official OpenAI Python SDK so you can drive modern assistants, manage tool selection, search files, and work with speech in one place.
+Easier OpenAI wraps the official OpenAI Python SDK so you can drive modern assistants, manage tool selection, search files, and work with speech in one place, int thblee most easy way possi.
 
 ## What's Included
 - Conversational `Assistant` helper with conversation memory and tool toggles.
