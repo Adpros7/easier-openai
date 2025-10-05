@@ -148,7 +148,8 @@ class Assistant:
 
         def extract_block(name: str) -> dict:
             pattern = re.compile(
-                rf"{name}:\s*\n((?:\s+.+\n?)+?)(?=^[A-Z][A-Za-z_ ]*:\s*$|$)", re.MULTILINE
+                rf"{name}:\s*\n((?:\s+.+\n?)+?)(?=^[A-Z][A-Za-z_ ]*:\s*$|$)",
+                re.MULTILINE,
             )
             match = pattern.search(doc)
             if not match:
@@ -194,7 +195,7 @@ class Assistant:
         schema = {
             "type": "function",
             "name": func.__name__,
-            "description": description or func.__doc__.strip().split("\n")[0], # type: ignore
+            "description": description or func.__doc__.strip().split("\n")[0],  # type: ignore
             "parameters": {
                 "type": "object",
                 "properties": properties,
@@ -203,7 +204,7 @@ class Assistant:
         }
 
         func.schema = schema
-        return func # type: ignore
+        return func  # type: ignore
 
     def _text_stream_generator(self, params_for_response):
         with self.client.responses.stream(**params_for_response) as streamer:
@@ -771,7 +772,7 @@ class Assistant:
             print(resp)
         self.text_to_speech(**say_params)
 
-        return resp # type: ignore
+        return resp  # type: ignore
 
     def speech_to_text(
         self,
@@ -795,7 +796,7 @@ class Assistant:
         aggressive: VadAgressiveness = 2,
         chunk_duration_ms: int = 30,
         log_directions: bool = False,
-        key: str = "space"
+        key: str = "space",
     ):
         stt_model = stt.STT(
             model=model, aggressive=aggressive, chunk_duration_ms=chunk_duration_ms
