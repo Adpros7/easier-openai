@@ -14,7 +14,7 @@ from os import getenv
 from turtle import pu
 from typing import TYPE_CHECKING, Any, Generator, Literal, TypeAlias, Unpack
 from urllib.parse import urlparse
-
+from playsound3 import playsound
 import openai_stt as stt
 import simpleaudio as sa
 from ez_openai import Assistant as asss
@@ -25,7 +25,6 @@ from openai.types.conversations.conversation import Conversation
 from openai.types.shared_params import Reasoning, ResponsesModel
 from openai.types.vector_store import VectorStore
 from PIL import Image
-from pygame import mixer
 from syntaxmod import wait_until
 from typing_extensions import TypedDict
 
@@ -98,7 +97,6 @@ class Assistant:
         self.temperature = temperature
         self.reasoning_effort = reasoning_effort
         self.summary_length = summary_length
-        self.playbacker = mixer.init()
         if reasoning_effort and summary_length:
             self.reasoning = Reasoning(effort=reasoning_effort, summary=summary_length)
 
@@ -606,6 +604,7 @@ class Assistant:
         response_format: Literal["mp3", "opus", "aac", "flac", "wav", "pcm"] = "wav",
         speed: float = 1,
         play: bool = True,
+        play_in_background: bool = False,
         save_to_file_path: str | None = None,
     ):
         """
@@ -655,8 +654,8 @@ class Assistant:
         if save_to_file_path:
             respo.write_to_file(str(save_to_file_path))
             if play:
-                sound = mixer.Sound(save_to_file_path).play()
-                while sound.get_busy():
+                sound = playsound(str(save_to_file_path), block=play_in_background)
+                while sound.is_alive():
                     pass
 
         else:
@@ -667,8 +666,8 @@ class Assistant:
                     respo.write_to_file(f.name)
                     f.flush()
                     f.close()
-                    sound = mixer.Sound(f.name).play()
-                    while sound.get_busy():
+                    sound = playsound(f.name, block=play_in_background)
+                    while sound.is_alive():
                         pass
                     os.remove(f.name)
 
@@ -830,7 +829,4 @@ if __name__ == "__main__":
         api_key=None, model="gpt-4o", system_prompt="You are a helpful assistant."
     )
 
-    while True:
-        inputa = bob.speech_to_text(mode="keyboard", log_directions=True)
-        print(inputa)
-        print(bob.full_text_to_speech(inputa, voice="shimmer"))
+    bob.text_to_speech("Hello, world!")

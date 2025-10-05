@@ -17,9 +17,6 @@ classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.10",
-  "Programming Language :: Python :: 3.11",
-  "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Topic :: Software Development :: Libraries :: Python Modules",
 ]
@@ -31,10 +28,10 @@ dependencies = [
   "openai-stt>=0.1.7.2",
   "whisper>=1.1.10",
   "ez-openai>=0.0.7",
-  "pygame>=2.5.0",
   "huggingface-hub>=0.35.1",
   "shed>=2025.6.1",
   "pillow>=11.3.0",
+  "playsound3>=3.2.8",
 ]
 
 [project.optional-dependencies]

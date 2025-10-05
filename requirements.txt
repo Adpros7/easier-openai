@@ -6,3 +6,4 @@ whisper
 ez-openai
 huggingface-hub
 pygame
+playsound3
