@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import base64
 import binascii
+import inspect
 import json
 import os
+import re
 import tempfile
 import types
 import warnings
@@ -39,8 +41,6 @@ ToolSpec: TypeAlias = dict[str, str | FunctionSpec]
 Seconds: TypeAlias = int
 
 
-Optional_Parameters_Description: TypeAlias = dict[str, str]
-"""give a dict like this: {'param1': 'description1', 'param2': 'description2'}"""
 VadAgressiveness: TypeAlias = Literal[1, 2, 3]
 
 
@@ -133,6 +133,88 @@ class Assistant:
                 )
         return vector_store_create, vector_store, vector
 
+    def openai_function(self, func: types.FunctionType) -> dict:
+        """
+        Decorator for OpenAI functions.
+
+        Args:
+            func (types.FunctionType): The function to decorate.
+
+        Returns:
+            dict: The OpenAI function dictionary.
+        """
+        if not isinstance(func, types.FunctionType):
+            raise TypeError("Expected a plain function (types.FunctionType)")
+
+        doc = inspect.getdoc(func) or ""
+
+        def extract_block(name: str) -> dict:
+            pattern = re.compile(
+                rf"{name}:\s*\n((?:\s+.+\n?)+?)(?=^[A-Z][A-Za-z_ ]*:\s*$|$)", re.MULTILINE
+            )
+            match = pattern.search(doc)
+            if not match:
+                return {}
+            lines = match.group(1).strip().splitlines()
+            block_dict = {}
+            for line in lines:
+                if ":" not in line:
+                    continue
+                key, val = line.split(":", 1)
+                block_dict[key.strip()] = val.strip()
+            return block_dict
+
+        def extract_description() -> str:
+            pattern = re.compile(
+                r"Description:\s*\n((?:\s+.+\n?)+?)(?=^[A-Z][A-Za-z_ ]*:\s*$|$)",
+                re.MULTILINE,
+            )
+            match = pattern.search(doc)
+            if not match:
+                return ""
+            return " ".join(line.strip() for line in match.group(1).splitlines())
+
+        args = extract_block("Args")
+        params = extract_block("Params")
+        merged = {**args, **params}
+        description = extract_description()
+
+        sig = inspect.signature(func)
+        properties = {}
+        required = []
+
+        for name, desc in merged.items():
+            param = sig.parameters.get(name)
+            required_flag = param.default is inspect._empty if param else True
+            properties[name] = {
+                "type": "string",  # you could infer more types if needed
+                "description": desc,
+            }
+            if required_flag:
+                required.append(name)
+
+        schema = {
+            "type": "function",
+            "name": func.__name__,
+            "description": description or func.__doc__.strip().split("\n")[0], # type: ignore
+            "parameters": {
+                "type": "object",
+                "properties": properties,
+                "required": required,
+            },
+        }
+
+        func.schema = schema
+        return func # type: ignore
+
+    def _text_stream_generator(self, params_for_response):
+        with self.client.responses.stream(**params_for_response) as streamer:
+            for event in streamer:
+                if event.type == "response.output_text.delta":
+                    yield event.delta
+                elif event.type == "response.completed":
+                    yield "done"
+
     def chat(
         self,
         input: str,
@@ -146,18 +228,17 @@ class Assistant:
         file_search_max_searches: int | None = None,
         tools_required: Literal["none", "auto", "required"] = "auto",
         custom_tools: list[types.FunctionType] = [],
-        if_custom_tools_params_description: Optional_Parameters_Description = {},
         return_full_response: bool = False,
         valid_json: dict = {},
-        force_valid_json: bool = False,
         stream: bool = False,
         text_stream: bool = False,
-    ) -> str: # type: ignore
+    ) -> str | Generator[str, Any, None]:
         """
-        This is the chat function
+        Description:
+            This is the chat function
 
         Args:
-            input: The input text. Defaults to None.
+            input: The input text.
             conv_id: The conversation ID. Defaults to True. Put the conversation ID here. If you want to create a new conversation, put True.
             max_output_tokens: The maximum output tokens. Defaults to None.
             store: Whether to store the conversation. Defaults to False.
@@ -169,7 +250,6 @@ class Assistant:
             file_search_max_searches: The if file search max searches. Defaults to None.
             return_full_response: Whether to return the full response. Defaults to False.
             valid_json: The valid json. Defaults to {}.
-            force_valid_json: The force valid json. Defaults to False.
 
         Returns:
             The response text.
@@ -216,7 +296,7 @@ class Assistant:
             "model": self.model,
             "reasoning": self.reasoning if self.reasoning is not None else None,
             "tools": [],
-            "stream": stream if stream is True else None,
+            "stream": stream,
         }
 
         if images:
@@ -274,11 +354,13 @@ class Assistant:
             params_for_response["tool_choice"] = "required"
 
         if custom_tools:
-            params_for_response["tools"].append(
-                {
-                    "type": "custom",
-                }
-            )
+            for tool in custom_tools:
+                try:
+                    params_for_response["tools"].append(tool.schema)
+                except Exception as e:
+                    print("Error adding custom tool: \n", e)
+                    print("\nLine Number : ", e.__traceback__.tb_lineno if isinstance(e, types.TracebackType) else 355)  # type: ignore
+                    continue
 
         params_for_response = {
             k: v for k, v in params_for_response.items() if v is not None
@@ -289,24 +371,16 @@ class Assistant:
 
             elif stream:
                 resp = self.client.responses.create(**params_for_response)
-            
 
         except Exception as e:
             print("Error creating response: \n", e)
-            print("\nLine Number : ", e.__traceback__.tb_lineno if isinstance(e, types.TracebackType) else 284)  # type: ignore
+            print("\nLine Number : ", e.__traceback__.tb_lineno if isinstance(e, types.TracebackType) else 370)  # type: ignore
             returns_flag = False
 
         finally:
-            
+
             if text_stream:
-                with self.client.responses.stream(
-                     **params_for_response
-                ) as streamer:
-                    for event in streamer:
-                        if event.type == "response.output_text.delta":
-                            yield event.delta # type: ignore
-                        elif event.type == "response.completed":
-                            yield "done" # type: ignore
+                return self._text_stream_generator(params_for_response)
             if store:
                 self.conversation = resp.conversation
 
@@ -698,7 +772,7 @@ class Assistant:
             print(resp)
         self.text_to_speech(**say_params)
 
-        return resp
+        return resp # type: ignore
 
     def speech_to_text(
         self,
@@ -722,13 +796,14 @@ class Assistant:
         aggressive: VadAgressiveness = 2,
         chunk_duration_ms: int = 30,
         log_directions: bool = False,
+        key: str = "space"
     ):
         stt_model = stt.STT(
             model=model, aggressive=aggressive, chunk_duration_ms=chunk_duration_ms
         )
 
         if mode == "keyboard":
-            result = stt_model.record_with_keyboard(log=log_directions)
+            result = stt_model.record_with_keyboard(log=log_directions, key=key)
         elif mode == "vad":
             result = stt_model.record_with_vad(log=log_directions)
 
@@ -755,15 +830,7 @@ if __name__ == "__main__":
         api_key=None, model="gpt-4o", system_prompt="You are a helpful assistant."
     )
 
-    from easier_openai.Images import Openai_Images
-
-    pic = Openai_Images(r"C:\Users\prani\Coding\AI\ChatPPT\Easy-gpt\tests\bannana.png")
-    # Define schema + function
     while True:
-        inputa = input("Enter text: ")
-        for e in bob.chat(inputa, images=[pic], text_stream=True):
-            if e == "done":
-                print("\n---done---")
-            else:
-                print(e, end="")
-        
+        inputa = bob.speech_to_text(mode="keyboard", log_directions=True)
+        print(inputa)
+        print(bob.full_text_to_speech(inputa, voice="shimmer"))
