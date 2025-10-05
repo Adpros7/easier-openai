@@ -132,7 +132,7 @@ class Assistant:
                     vector_store_id=vector_store_create.id, file=f
                 )
         return vector_store_create, vector_store, vector
-    
+
     def openai_function(self, func: types.FunctionType) -> dict:
         """
         Decorator for OpenAI functions.
@@ -207,6 +207,13 @@ class Assistant:
         func.schema = schema
         return func # type: ignore
 
+    def _text_stream_generator(self, params_for_response):
+        with self.client.responses.stream(**params_for_response) as streamer:
+            for event in streamer:
+                if event.type == "response.output_text.delta":
+                    yield event.delta
+                elif event.type == "response.completed":
+                    yield "done"
 
     def chat(
         self,
@@ -225,7 +232,7 @@ class Assistant:
         valid_json: dict = {},
         stream: bool = False,
         text_stream: bool = False,
-    ) -> str:  # type: ignore
+    ) -> str | Generator[str, Any, None]:
         """
         Description:
             This is the chat function
@@ -289,7 +296,7 @@ class Assistant:
             "model": self.model,
             "reasoning": self.reasoning if self.reasoning is not None else None,
             "tools": [],
-            "stream": stream if stream is True else None,
+            "stream": stream,
         }
 
         if images:
@@ -354,7 +361,6 @@ class Assistant:
                     print("Error adding custom tool: \n", e)
                     print("\nLine Number : ", e.__traceback__.tb_lineno if isinstance(e, types.TracebackType) else 355)  # type: ignore
                     continue
-                    
 
         params_for_response = {
             k: v for k, v in params_for_response.items() if v is not None
@@ -374,12 +380,7 @@ class Assistant:
         finally:
 
             if text_stream:
-                with self.client.responses.stream(**params_for_response) as streamer:
-                    for event in streamer:
-                        if event.type == "response.output_text.delta":
-                            yield event.delta  # type: ignore
-                        elif event.type == "response.completed":
-                            yield "done"  # type: ignore
+                return self._text_stream_generator(params_for_response)
             if store:
                 self.conversation = resp.conversation
 
@@ -771,7 +772,7 @@ class Assistant:
             print(resp)
         self.text_to_speech(**say_params)
 
-        return resp
+        return resp # type: ignore
 
     def speech_to_text(
         self,
@@ -795,13 +796,14 @@ class Assistant:
         aggressive: VadAgressiveness = 2,
         chunk_duration_ms: int = 30,
         log_directions: bool = False,
+        key: str = "space"
     ):
         stt_model = stt.STT(
             model=model, aggressive=aggressive, chunk_duration_ms=chunk_duration_ms
         )
 
         if mode == "keyboard":
-            result = stt_model.record_with_keyboard(log=log_directions)
+            result = stt_model.record_with_keyboard(log=log_directions, key=key)
         elif mode == "vad":
             result = stt_model.record_with_vad(log=log_directions)
 
@@ -828,14 +830,7 @@ if __name__ == "__main__":
         api_key=None, model="gpt-4o", system_prompt="You are a helpful assistant."
     )
 
-    from easier_openai.Images import Openai_Images
-
-    pic = Openai_Images(r"C:\Users\prani\Coding\AI\ChatPPT\Easy-gpt\tests\bannana.png")
-    # Define schema + function
     while True:
-        inputa = input("Enter text: ")
-        for e in bob.chat(inputa, images=[pic], text_stream=True):
-            if e == "done":
-                print("\n---done---")
-            else:
-                print(e, end="")
+        inputa = bob.speech_to_text(mode="keyboard", log_directions=True)
+        print(inputa)
+        print(bob.full_text_to_speech(inputa, voice="shimmer"))
