@@ -2,7 +2,6 @@ openai
 simpleaudio
 openai_stt
 typing_extensions
-whisper
 ez-openai
 huggingface-hub
 pygame
