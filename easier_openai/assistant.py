@@ -14,7 +14,7 @@ from os import getenv
 from turtle import pu
 from typing import TYPE_CHECKING, Any, Generator, Literal, TypeAlias, Unpack
 from urllib.parse import urlparse
-from playsound3 import playsound
+
 import openai_stt as stt
 import simpleaudio as sa
 from ez_openai import Assistant as asss
@@ -25,6 +25,7 @@ from openai.types.conversations.conversation import Conversation
 from openai.types.shared_params import Reasoning, ResponsesModel
 from openai.types.vector_store import VectorStore
 from PIL import Image
+from playsound3 import playsound
 from syntaxmod import wait_until
 from typing_extensions import TypedDict
 
@@ -832,4 +833,6 @@ if __name__ == "__main__":
         api_key=None, model="gpt-4o", system_prompt="You are a helpful assistant."
     )
 
-    print(bob.speech_to_text(mode="vad", model="gpt-4o-transcribe", log_directions=True))
+    print(
+        bob.speech_to_text(mode="vad", model="gpt-4o-transcribe", log_directions=True)
+    )
