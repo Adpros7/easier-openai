@@ -792,6 +792,8 @@ class Assistant:
             "large",
             "large-v3-turbo",
             "turbo",
+            "gpt-4o-transcribe",
+            "gpt-4o-mini-transcribe",
         ] = "base",
         aggressive: VadAgressiveness = 2,
         chunk_duration_ms: int = 30,
@@ -830,4 +832,4 @@ if __name__ == "__main__":
         api_key=None, model="gpt-4o", system_prompt="You are a helpful assistant."
     )
 
-    bob.text_to_speech("Hello, world!")
+    print(bob.speech_to_text(mode="vad", model="gpt-4o-transcribe", log_directions=True))
