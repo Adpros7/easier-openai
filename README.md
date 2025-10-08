@@ -1,12 +1,13 @@
 # Easier OpenAI
 
-Easier OpenAI wraps the official OpenAI Python SDK so you can drive modern assistants, manage tool selection, search files, and work with speech in one place, int thblee most easy way possi.
+Easier OpenAI wraps the official OpenAI Python SDK so you can drive modern assistants, manage tool selection, search files, and work with speech from one helper package—the easiest possible way.
 
 ## What's Included
 - Conversational `Assistant` helper with conversation memory and tool toggles.
 - Temporary vector store ingestion to ground answers in local notes.
 - Built-in helpers for image generation and text-to-speech playback.
 - Speech-to-text recording shortcuts for quick dictation.
+- Lazy-loaded imports so `import easier_openai` stays fast even when optional helpers expand.
 - Optional `openai_function` decorator re-exported for function tool schemas.
 
 ## Installation
