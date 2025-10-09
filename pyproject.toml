@@ -1,4 +1,4 @@
-﻿[build-system]
+[build-system]
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 license = "Apache-2.0"
 authors = [
-  { name = "Advik Mathur", email = "pranit.advik@gmail.com" },
+  { name = "Advik Mathur", email = "pranit.advik@gmail.com" }
 ]
 keywords = ["openai", "assistant", "chat", "responses", "audio", "images", "vector", "speech"]
 classifiers = [
