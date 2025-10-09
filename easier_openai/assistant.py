@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import base64
-import binascii
 import inspect
 import json
 import os
@@ -9,22 +8,16 @@ import re
 import tempfile
 import types
 import warnings
-from io import BytesIO
 from os import getenv
-from turtle import pu
 from typing import TYPE_CHECKING, Any, Generator, Literal, TypeAlias, Unpack
-from urllib.parse import urlparse
 
 import openai_stt as stt
-import simpleaudio as sa
 from openai import OpenAI
 from openai.resources.vector_stores.vector_stores import VectorStores
 from openai.types.conversations.conversation import Conversation
 from openai.types.shared_params import Reasoning, ResponsesModel
 from openai.types.vector_store import VectorStore
-from PIL import Image
 from playsound3 import playsound
-from syntaxmod import wait_until
 from typing_extensions import TypedDict
 
 warnings.filterwarnings("ignore")
