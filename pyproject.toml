@@ -18,21 +18,19 @@ classifiers = [
   "Intended Audience :: Developers",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.13",
-  "Topic :: Software Development :: Libraries :: Python Modules",
-]
-dependencies = [
-  "openai>=1.43.0",
-  "typing-extensions>=4.7.0",
-  "pydantic>=2.0.0",
-  "simpleaudio>=1.0.4",
-  "openai-stt>=0.1.7.2",
-  "ez-openai>=0.0.7",
-  "huggingface-hub>=0.35.1",
-  "shed>=2025.6.1",
-  "pillow>=11.3.0",
-  "playsound3>=3.2.8",
+  "Topic :: Software Development :: Libraries :: Python Modules"
 ]
 
+dependencies = [
+    "openai",
+    "simpleaudio",
+    "openai-stt",
+    "typing-extensions",
+    "ez-openai",
+    "huggingface-hub",
+    "pygame",
+    "playsound3",
+]
 [project.optional-dependencies]
 function_tools = [
   "ez-openai>=0.0.7",
