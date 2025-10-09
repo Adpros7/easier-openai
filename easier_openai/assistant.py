@@ -19,7 +19,10 @@ from openai.types.conversations.conversation import Conversation
 from openai.types.shared_params import Reasoning, ResponsesModel
 from openai.types.vector_store import VectorStore
 from playsound3 import playsound
+from syntaxmod import wait_until
 from typing_extensions import TypedDict
+import sys
+import subprocess
 
 warnings.filterwarnings("ignore")
 
@@ -43,6 +46,14 @@ if TYPE_CHECKING:
     from .Images import Openai_Images
 
 
+def preload_openai_stt():
+    return subprocess.Popen(
+        [sys.executable, "-c", "import openai_stt"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+STT_LOADER = preload_openai_stt()
 class Assistant:
     def __init__(
         self,
@@ -793,6 +804,7 @@ class Assistant:
         log_directions: bool = False,
         key: str = "space",
     ):
+        wait_until(not STT_LOADER.poll() is None)
         if self.stt == None:
             stt_model = stt.STT(
                 model=model, aggressive=aggressive, chunk_duration_ms=chunk_duration_ms
