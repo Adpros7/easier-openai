@@ -5,12 +5,13 @@ import inspect
 import json
 import os
 import re
+import subprocess
+import sys
 import tempfile
 import types
 import warnings
 from os import getenv
 from typing import TYPE_CHECKING, Any, Generator, Literal, TypeAlias, Unpack
-
 
 from openai import OpenAI
 from openai.resources.vector_stores.vector_stores import VectorStores
@@ -20,8 +21,6 @@ from openai.types.vector_store import VectorStore
 from playsound3 import playsound
 from syntaxmod import wait_until
 from typing_extensions import TypedDict
-import sys
-import subprocess
 
 warnings.filterwarnings("ignore")
 

@@ -3,6 +3,7 @@
 from importlib import import_module
 from importlib import metadata as _metadata
 from typing import TYPE_CHECKING, Any, List
+
 from .assistant import preload_openai_stt
 
 __all__ = [
