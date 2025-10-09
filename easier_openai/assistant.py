@@ -890,3 +890,10 @@ if __name__ == "__main__":
     print(
         bob.speech_to_text(mode="vad", model="gpt-4o-transcribe", log_directions=True)
     )
+
+
+
+
+
+
+
