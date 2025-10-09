@@ -1,10 +1,10 @@
-[build-system]
+﻿[build-system]
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "easier-openai"
-version = "4.3"
+version = "4.4"
 description = "Utilities for orchestrating OpenAI chat, tool calling, search, audio, and images from one helper package."
 readme = "README.md"
 requires-python = ">=3.13"

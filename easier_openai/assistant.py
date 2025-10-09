@@ -6,13 +6,12 @@ import json
 import os
 import re
 import tempfile
-from turtle import st
 import types
 import warnings
 from os import getenv
 from typing import TYPE_CHECKING, Any, Generator, Literal, TypeAlias, Unpack
 
-import openai_stt as stt
+
 from openai import OpenAI
 from openai.resources.vector_stores.vector_stores import VectorStores
 from openai.types.conversations.conversation import Conversation
@@ -53,7 +52,10 @@ def preload_openai_stt():
         stderr=subprocess.DEVNULL,
     )
 
+
 STT_LOADER = preload_openai_stt()
+
+
 class Assistant:
     def __init__(
         self,
@@ -113,7 +115,7 @@ class Assistant:
         else:
             self.conversation = None
             self.conversation_id = None
-        
+
         self.stt: Any = None
 
     def _convert_filepath_to_vector(
@@ -805,15 +807,16 @@ class Assistant:
         key: str = "space",
     ):
         wait_until(not STT_LOADER.poll() is None)
+        import openai_stt as stt
+
         if self.stt == None:
             stt_model = stt.STT(
                 model=model, aggressive=aggressive, chunk_duration_ms=chunk_duration_ms
             )
             self.stt = stt_model
-        
+
         else:
             stt_model = self.stt
-            
 
         if mode == "keyboard":
             result = stt_model.record_with_keyboard(log=log_directions, key=key)
