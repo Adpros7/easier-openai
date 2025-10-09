@@ -17,8 +17,6 @@ from urllib.parse import urlparse
 
 import openai_stt as stt
 import simpleaudio as sa
-from ez_openai import Assistant as asss
-from ez_openai.decorator import openai_function
 from openai import OpenAI
 from openai.resources.vector_stores.vector_stores import VectorStores
 from openai.types.conversations.conversation import Conversation
@@ -111,7 +109,6 @@ class Assistant:
             self.conversation = None
             self.conversation_id = None
 
-        self.asss = asss(self.api_key)
 
     def _convert_filepath_to_vector(
         self, list_of_files: list[str]

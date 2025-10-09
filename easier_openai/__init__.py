@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Any, List
 
 __all__ = [
     "Assistant",
-    "openai_function",
     "__version__",
     "__description__",
     "Seconds",
@@ -21,13 +20,11 @@ _LAZY_EXPORTS = {
     "Seconds": ("easier_openai.assistant", "Seconds"),
     "VadAgressiveness": ("easier_openai.assistant", "VadAgressiveness"),
     "Openai_Images": ("easier_openai.Images", "Openai_Images"),
-    "openai_function": ("ez_openai.decorator", "openai_function"),
 }
 
 if TYPE_CHECKING:
     from .assistant import Assistant, Seconds, VadAgressiveness
     from .Images import Openai_Images
-    from ez_openai.decorator import openai_function
 
 
 def __getattr__(name: str) -> Any:

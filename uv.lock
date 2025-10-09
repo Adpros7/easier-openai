@@ -145,7 +145,6 @@ name = "easier-openai"
 version = "4.3"
 source = { editable = "." }
 dependencies = [
-    { name = "ez-openai" },
     { name = "huggingface-hub" },
     { name = "openai" },
     { name = "openai-stt" },
@@ -156,17 +155,12 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
-function-tools = [
-    { name = "ez-openai" },
-]
 speech-models = [
     { name = "openai-whisper" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "ez-openai" },
-    { name = "ez-openai", marker = "extra == 'function-tools'", specifier = ">=0.0.7" },
     { name = "huggingface-hub" },
     { name = "openai" },
     { name = "openai-stt" },
@@ -176,19 +170,7 @@ requires-dist = [
     { name = "simpleaudio" },
     { name = "typing-extensions" },
 ]
-provides-extras = ["function-tools", "speech-models"]
-
-[[package]]
-name = "ez-openai"
-version = "0.0.7"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "openai" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/8f/48/e8ba27408b98a5f136b0d1f72dc758a83c32e970b9ce8d93f5d6bf5bcfa5/ez_openai-0.0.7.tar.gz", hash = "sha256:89a4df7ce4e50d664c60057f85ac866a8bcc015d40950bfda74c0944966163b6", size = 17561, upload-time = "2024-10-15T09:25:09.867Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/30/5d/830477770182dc7da12f54ef23c55d9cbdcec0c42b08b3a0ebbe74cc5807/ez_openai-0.0.7-py3-none-any.whl", hash = "sha256:f419bbc4f38cf0a324da10d67f7e5d78d9ed1814cc3f9de3f883750215e218b4", size = 18334, upload-time = "2024-10-15T09:25:08.695Z" },
-]
+provides-extras = ["speech-models"]
 
 [[package]]
 name = "faster-whisper"
