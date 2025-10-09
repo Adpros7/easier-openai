@@ -6,6 +6,7 @@ import json
 import os
 import re
 import tempfile
+from turtle import st
 import types
 import warnings
 from os import getenv
@@ -101,7 +102,8 @@ class Assistant:
         else:
             self.conversation = None
             self.conversation_id = None
-
+        
+        self.stt: Any = None
 
     def _convert_filepath_to_vector(
         self, list_of_files: list[str]
@@ -791,9 +793,15 @@ class Assistant:
         log_directions: bool = False,
         key: str = "space",
     ):
-        stt_model = stt.STT(
-            model=model, aggressive=aggressive, chunk_duration_ms=chunk_duration_ms
-        )
+        if self.stt == None:
+            stt_model = stt.STT(
+                model=model, aggressive=aggressive, chunk_duration_ms=chunk_duration_ms
+            )
+            self.stt = stt_model
+        
+        else:
+            stt_model = self.stt
+            
 
         if mode == "keyboard":
             result = stt_model.record_with_keyboard(log=log_directions, key=key)

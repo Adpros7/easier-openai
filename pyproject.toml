@@ -44,3 +44,5 @@ Issues = "https://github.com/Adpros7/easier-gpt/issues"
 [tool.setuptools]
 packages = ["easier_openai"]
 include-package-data = true
+
+

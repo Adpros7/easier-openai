@@ -698,7 +698,7 @@ wheels = [
 
 [[package]]
 name = "openai-stt"
-version = "2"
+version = "2.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "faster-whisper" },
@@ -707,13 +707,12 @@ dependencies = [
     { name = "pyaudio" },
     { name = "setuptools" },
     { name = "syntaxmod" },
-    { name = "torch" },
     { name = "webrtcvad" },
     { name = "whisper" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c2/5c/1940d4415959ac7e36a36cf55f4cef717deb10a4352e8851e2c7ad5598c3/openai_stt-2.tar.gz", hash = "sha256:8e6cc16584854af5be0d2d51628e4124d785a192328a1ebfde5843e52b2d3197", size = 5230, upload-time = "2025-10-08T22:46:19.788Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1e/86/552301fc35306b5ae9db2e560e24ed80fca6671f93dec984e496da318c2e/openai_stt-2.1.tar.gz", hash = "sha256:982bb2b512189f6c534b92a4d24c9aa5d702ac797aabe383953c4725a55ba02b", size = 5321, upload-time = "2025-10-09T22:10:30.168Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1e/24/ddb86926abd86aa41a029868410a5546bb7025bf87067b43b877263899fe/openai_stt-2-py3-none-any.whl", hash = "sha256:ad863e498f8b62e7b7f3cb1fdb2d5a1e56e5ede15dee93d2e73bca836feeb0b9", size = 5459, upload-time = "2025-10-08T22:46:18.636Z" },
+    { url = "https://files.pythonhosted.org/packages/01/52/246638e47121de0ae579afa5448ea5dc0ae96c56ac12188e1601a5d9ebf9/openai_stt-2.1-py3-none-any.whl", hash = "sha256:e57808b6beb3d7b21870617ef7e04a90381a34612d53663e18aae91f6e9d02fc", size = 5592, upload-time = "2025-10-09T22:10:29.368Z" },
 ]
 
 [[package]]
