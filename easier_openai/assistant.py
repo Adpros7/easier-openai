@@ -45,6 +45,11 @@ if TYPE_CHECKING:
 
 
 def preload_openai_stt():
+    """Start a background process that pre-imports the speech-to-text module.
+
+    Returns:
+        subprocess.Popen: Handle to the loader process so callers can verify startup.
+    """
     return subprocess.Popen(
         [sys.executable, "-c", "import openai_stt"],
         stdout=subprocess.DEVNULL,
@@ -56,6 +61,8 @@ STT_LOADER = preload_openai_stt()
 
 
 class Assistant:
+    """High-level helper that orchestrates OpenAI chat, tools, vector stores, audio, and images."""
+
     def __init__(
         self,
         api_key: str | None = None,
@@ -120,6 +127,20 @@ class Assistant:
     def _convert_filepath_to_vector(
         self, list_of_files: list[str]
     ) -> tuple[VectorStore, VectorStore, VectorStores]:
+        """Upload local files into a fresh vector store.
+
+        Args:
+            list_of_files: Absolute or relative file paths that will seed the store.
+
+        Returns:
+            tuple[VectorStore, VectorStore, VectorStores]: The created store summary,
+            a retrieved store instance, and the vector store manager reference for
+            follow-up operations.
+
+        Raises:
+            ValueError: If the provided file list is empty.
+            FileNotFoundError: When any supplied path does not exist.
+        """
         if not isinstance(list_of_files, list) or len(list_of_files) == 0:
             raise ValueError("list_of_files must be a non-empty list of file paths.")
         for filepath in list_of_files:
@@ -152,6 +173,14 @@ class Assistant:
         doc = inspect.getdoc(func) or ""
 
         def extract_block(name: str) -> dict:
+            """Parse a docstring section into a mapping of parameter names to descriptions.
+
+            Args:
+                name: Header label to search for (for example ``"Args"``).
+
+            Returns:
+                dict: Key/value mapping describing parameters defined in the block.
+            """
             pattern = re.compile(
                 rf"{name}:\s*\n((?:\s+.+\n?)+?)(?=^[A-Z][A-Za-z_ ]*:\s*$|$)",
                 re.MULTILINE,
@@ -169,6 +198,7 @@ class Assistant:
             return block_dict
 
         def extract_description() -> str:
+            """Return the free-form description block from the function docstring."""
             pattern = re.compile(
                 r"Description:\s*\n((?:\s+.+\n?)+?)(?=^[A-Z][A-Za-z_ ]*:\s*$|$)",
                 re.MULTILINE,
@@ -212,6 +242,15 @@ class Assistant:
         return func  # type: ignore
 
     def _text_stream_generator(self, params_for_response):
+        """Yield response text deltas while the streaming API is producing output.
+
+        Args:
+            params_for_response: Keyword arguments that will be forwarded to
+                `client.responses.stream`.
+
+        Yields:
+            str: Individual text fragments or the sentinel string ``"done"``.
+        """
         with self.client.responses.stream(**params_for_response) as streamer:
             for event in streamer:
                 if event.type == "response.output_text.delta":
@@ -398,24 +437,6 @@ class Assistant:
 
             else:
                 return ""
-
-    # def function_chat(self, input: str, func: list[Callable], descriptions: type[dict[str, str]]= dict[str, str], temprature: float | None = None):
-    #     if temprature is None:
-    #         tempratures = self.temperature
-
-    #     that = openai_function(descriptions=descriptions)(func)
-    #     if tempratures is None:
-    #         tempratures = None
-    #         bob = self.asss.create("bob", functions=[that], model=self.model, instructions=self.system_prompt)
-    #         blib = bob.conversation.create()
-    #         stob = blib.ask(input)
-
-    #     else:
-    #         bob = self.asss.create("bob", functions=[that], model=self.model, instructions=self.system_prompt)
-    #         blib = bob.conversation.create()
-    #         stob = blib.ask(input)
-
-    #     return stob
 
     def create_conversation(self, return_id_only: bool = False) -> Conversation | str:
         """
@@ -805,6 +826,20 @@ class Assistant:
         log_directions: bool = False,
         key: str = "space",
     ):
+        """Capture audio input and run it through the cached speech-to-text client.
+
+        Args:
+            mode: Recording strategy; ``"vad"`` records until silence, ``"keyboard"``
+                toggles with a hotkey, or a numeric value records for that many seconds.
+            model: Whisper or OpenAI speech model identifier.
+            aggressive: Voice activity detection aggressiveness when using VAD.
+            chunk_duration_ms: Frame size for VAD processing in milliseconds.
+            log_directions: Whether to print instructions to the console.
+            key: Keyboard key that toggles recording when ``mode="keyboard"``.
+
+        Returns:
+            str: The recognized transcript.
+        """
         wait_until(not STT_LOADER.poll() is None)
         import openai_stt as stt
 
@@ -828,6 +863,7 @@ class Assistant:
         return result
 
     class __mass_update_helper(TypedDict, total=False):
+        """TypedDict describing the accepted keyword arguments for `mass_update`."""
         model: ResponsesModel
         system_prompt: str
         temperature: float
@@ -836,6 +872,12 @@ class Assistant:
         function_call_list: list[types.FunctionType]
 
     def mass_update(self, **__mass_update_helper: Unpack[__mass_update_helper]):
+        """Bulk assign configuration attributes using keyword arguments.
+
+        Args:
+            **__mass_update_helper: Arbitrary subset of Assistant configuration
+                fields such as ``model`` or ``temperature``.
+        """
         for key, value in __mass_update_helper.items():
             setattr(self, key, value)
 

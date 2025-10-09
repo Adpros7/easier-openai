@@ -7,6 +7,7 @@ from easier_openai import Assistant
 
 
 class Openai_Images(Assistant):
+    """Simplified interface for classifying and uploading image payloads to OpenAI."""
 
     def __init__(self, image: str):
         """Parameters:
@@ -18,6 +19,15 @@ class Openai_Images(Assistant):
         def _classify_input(
             s: str,
         ) -> Literal["image_url", "Base64", "filepath", "unknown"]:
+            """Infer the type of image input so downstream calls can handle it appropriately.
+
+            Args:
+                s: Raw image value supplied by the caller.
+
+            Returns:
+                Literal[str]: One of ``\"image_url\"``, ``\"Base64\"``, ``\"filepath\"``,
+                or ``\"unknown\"`` indicating how the image should be processed.
+            """
             # Check URL
             parsed = urlparse(s)
             if parsed.scheme in ("http", "https") and parsed.netloc:

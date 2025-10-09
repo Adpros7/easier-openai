@@ -44,6 +44,7 @@ def __getattr__(name: str) -> Any:
 
 
 def __dir__() -> List[str]:
+    """Expose lazy exports when introspecting the module via dir()."""
     return sorted({*globals(), *_LAZY_EXPORTS})
 
 
