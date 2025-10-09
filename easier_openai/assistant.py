@@ -9,6 +9,7 @@ import re
 import tempfile
 import types
 import warnings
+from copy import deepcopy
 from io import BytesIO
 from os import getenv
 from turtle import pu
@@ -204,13 +205,185 @@ class Assistant:
         func.schema = schema
         return func  # type: ignore
 
-    def _text_stream_generator(self, params_for_response):
-        with self.client.responses.stream(**params_for_response) as streamer:
-            for event in streamer:
-                if event.type == "response.output_text.delta":
-                    yield event.delta
-                elif event.type == "response.completed":
-                    yield "done"
+    def _text_stream_generator(
+        self,
+        params_for_response: dict[str, Any],
+        tool_map: dict[str, types.FunctionType],
+        *,
+        store: bool,
+        file_search: bool,
+        vector: tuple[VectorStore, VectorStore, VectorStores] | None,
+    ) -> Generator[str, Any, None]:
+        """Stream response text while resolving custom tool calls."""
+
+        params = deepcopy(params_for_response)
+        base_followup = {
+            k: deepcopy(v) if isinstance(v, (dict, list)) else v
+            for k, v in params.items()
+            if k not in {"input", "stream"}
+        }
+
+        final_response = None
+
+        while True:
+            with self.client.responses.stream(**params) as streamer:
+                for event in streamer:
+                    if event.type == "response.output_text.delta":
+                        yield event.delta
+
+                final_response = streamer.get_final_response()
+
+            tool_calls = self._extract_function_calls(final_response)
+            if not tool_calls:
+                break
+
+            tool_outputs = self._invoke_custom_tools(tool_calls, tool_map)
+            if not tool_outputs:
+                break
+            params = self._build_followup_params(
+                base_followup,
+                final_response,
+                tool_outputs,
+                stream=True,
+            )
+
+        if final_response and store and final_response.conversation:
+            self.conversation = final_response.conversation
+
+        if file_search and vector:
+            vector[2].delete(vector[0].id)
+
+        yield "done"
+
+    def _normalize_tool_schema(self, schema: dict[str, Any]) -> dict[str, Any]:
+        if "function" in schema:
+            return schema
+
+        if schema.get("type") != "function":
+            raise ValueError("Custom tool schema must describe a function.")
+
+        return {
+            "type": "function",
+            "function": {k: v for k, v in schema.items() if k != "type"},
+        }
+
+    def _extract_function_calls(self, response: Any) -> list[Any]:
+        calls: list[Any] = []
+        for item in getattr(response, "output", []) or []:
+            if getattr(item, "type", None) == "function_call":
+                calls.append(item)
+        return calls
+
+    def _invoke_custom_tools(
+        self,
+        tool_calls: list[Any],
+        tool_map: dict[str, types.FunctionType],
+    ) -> list[dict[str, Any]]:
+        outputs: list[dict[str, Any]] = []
+
+        for call in tool_calls:
+            tool_name = getattr(call, "name", None)
+            if not tool_name or tool_name not in tool_map:
+                raise ValueError(f"No custom tool registered with name '{tool_name}'.")
+
+            raw_arguments = getattr(call, "arguments", "") or "{}"
+            try:
+                parsed_arguments = json.loads(raw_arguments)
+            except json.JSONDecodeError:
+                parsed_arguments = raw_arguments
+
+            tool = tool_map[tool_name]
+
+            if isinstance(parsed_arguments, dict):
+                result = tool(**parsed_arguments)
+            elif isinstance(parsed_arguments, list):
+                result = tool(*parsed_arguments)
+            else:
+                result = tool(parsed_arguments)
+
+            if result is None:
+                output_text = ""
+            elif isinstance(result, (dict, list)):
+                output_text = json.dumps(result)
+            else:
+                output_text = str(result)
+
+            call_id = getattr(call, "call_id", None) or getattr(call, "id", None)
+            if not call_id:
+                raise ValueError("Tool call did not include an identifier.")
+
+            outputs.append(
+                {
+                    "type": "function_call_output",
+                    "call_id": call_id,
+                    "output": output_text,
+                }
+            )
+
+        return outputs
+
+    def _build_followup_params(
+        self,
+        base_params: dict[str, Any],
+        response: Any,
+        tool_outputs: list[dict[str, Any]],
+        *,
+        stream: bool,
+    ) -> dict[str, Any]:
+        params = {
+            k: deepcopy(v) if isinstance(v, (dict, list)) else v
+            for k, v in base_params.items()
+        }
+
+        params["input"] = tool_outputs
+        params["previous_response_id"] = getattr(response, "id", None)
+
+        conversation = getattr(response, "conversation", None)
+        if conversation and getattr(conversation, "id", None):
+            params["conversation"] = conversation.id
+
+        if stream:
+            params["stream"] = True
+        else:
+            params.pop("stream", None)
+
+        return {k: v for k, v in params.items() if v not in ({}, None)}
+
+    def _resolve_function_calls(
+        self,
+        response: Any,
+        initial_params: dict[str, Any],
+        tool_map: dict[str, types.FunctionType],
+    ) -> Any:
+        if not tool_map:
+            return response
+
+        base_followup = {
+            k: deepcopy(v) if isinstance(v, (dict, list)) else v
+            for k, v in initial_params.items()
+            if k != "input"
+        }
+
+        current_response = response
+
+        while True:
+            tool_calls = self._extract_function_calls(current_response)
+            if not tool_calls:
+                break
+
+            tool_outputs = self._invoke_custom_tools(tool_calls, tool_map)
+            if not tool_outputs:
+                break
+            followup_params = self._build_followup_params(
+                base_followup,
+                current_response,
+                tool_outputs,
+                stream=False,
+            )
+
+            current_response = self.client.responses.create(**followup_params)
+
+        return current_response
 
     def chat(
         self,
@@ -267,7 +440,6 @@ class Assistant:
         if not convo:
             convo = False
 
-        returns_flag = True
         params_for_response = {
             "input": [
                 {
@@ -317,6 +489,7 @@ class Assistant:
                 {"type": "code_interpreter", "container": {"type": "auto"}}
             )
 
+        vector: tuple[VectorStore, VectorStore, VectorStores] | None = None
         if file_search:
             vector = self._convert_filepath_to_vector(file_search)
 
@@ -350,47 +523,69 @@ class Assistant:
         elif tools_required == "required":
             params_for_response["tool_choice"] = "required"
 
+        tool_map: dict[str, types.FunctionType] = {}
         if custom_tools:
             for tool in custom_tools:
+                schema = getattr(tool, "schema", None)
+                if not schema:
+                    raise ValueError(
+                        "Custom tools must be decorated with `openai_function`."
+                    )
+
                 try:
-                    params_for_response["tools"].append(tool.schema)
+                    normalized_schema = self._normalize_tool_schema(schema)
+                    params_for_response["tools"].append(normalized_schema)
+                    tool_name = normalized_schema["function"]["name"]
+                    tool_map[tool_name] = tool
                 except Exception as e:
                     print("Error adding custom tool: \n", e)
-                    print("\nLine Number : ", e.__traceback__.tb_lineno if isinstance(e, types.TracebackType) else 355)  # type: ignore
+                    print(
+                        "\nLine Number : ",
+                        e.__traceback__.tb_lineno
+                        if isinstance(e, types.TracebackType)
+                        else 355,
+                    )
                     continue
 
         params_for_response = {
             k: v for k, v in params_for_response.items() if v is not None
         }
-        try:
-            if not stream:
-                resp = self.client.responses.create(**params_for_response)
 
-            elif stream:
-                resp = self.client.responses.create(**params_for_response)
+        try:
+            if text_stream:
+                streaming_params = deepcopy(params_for_response)
+                streaming_params["stream"] = True
+                return self._text_stream_generator(
+                    streaming_params,
+                    tool_map,
+                    store=store,
+                    file_search=bool(file_search),
+                    vector=vector,
+                )
+
+            request_params = deepcopy(params_for_response)
+            request_params.pop("stream", None)
+
+            resp = self.client.responses.create(**request_params)
+            resp = self._resolve_function_calls(resp, request_params, tool_map)
 
         except Exception as e:
             print("Error creating response: \n", e)
-            print("\nLine Number : ", e.__traceback__.tb_lineno if isinstance(e, types.TracebackType) else 370)  # type: ignore
-            returns_flag = False
+            print(
+                "\nLine Number : ",
+                e.__traceback__.tb_lineno if isinstance(e, types.TracebackType) else 370,
+            )  # type: ignore
+            return ""
 
-        finally:
+        if store and getattr(resp, "conversation", None):
+            self.conversation = resp.conversation
 
-            if text_stream:
-                return self._text_stream_generator(params_for_response)
-            if store:
-                self.conversation = resp.conversation
+        if file_search and vector:
+            vector[2].delete(vector[0].id)
 
-            if file_search:
-                vector[2].delete(vector[0].id)
-
-            if returns_flag:
-                if return_full_response or stream:
-                    return resp
-                return resp.output_text
-
-            else:
-                return ""
+        if return_full_response or stream:
+            return resp
+        return resp.output_text
 
     # def function_chat(self, input: str, func: list[Callable], descriptions: type[dict[str, str]]= dict[str, str], temprature: float | None = None):
     #     if temprature is None:
