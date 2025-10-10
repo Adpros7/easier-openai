@@ -8,20 +8,19 @@ import re
 import subprocess
 import sys
 import tempfile
-from threading import BrokenBarrierError
 import types
 import warnings
 from os import getenv
-from typing import TYPE_CHECKING, Any, Generator, Literal, TypeAlias, Unpack
+from threading import BrokenBarrierError
+from typing import TYPE_CHECKING, Any, Generator, Literal, Mapping, Sequence, TypeAlias, Unpack
 
 from openai import OpenAI
 from openai.resources.vector_stores.vector_stores import VectorStores
 from openai.types.conversations.conversation import Conversation
-from openai.types.shared_params import Reasoning, ResponsesModel
 from openai.types.responses.response import Response
-from openai.types.responses.response_function_tool_call import (
-    ResponseFunctionToolCall,
-)
+from openai.types.responses.response_function_tool_call import \
+    ResponseFunctionToolCall
+from openai.types.shared_params import Reasoning, ResponsesModel
 from openai.types.vector_store import VectorStore
 from playsound3 import playsound
 from syntaxmod import wait_until
@@ -83,6 +82,8 @@ class Assistant:
 
     Note:
         The assistant reuses a shared speech-to-text loader so audio helpers start quickly.
+        Function tools decorated with ``openai_function`` can also be registered globally via
+        ``assistant.function_call_list``.
     """
 
     def __init__(
@@ -95,58 +96,70 @@ class Assistant:
         reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = None,
         summary_length: Literal["auto", "concise", "detailed"] | None = None,
     ):
-        """
-        Args:
-            api_key (str | None): The API key to use for OpenAI API requests.
-            model (ResponsesModel): The model to use for OpenAI API requests.
-            system_prompt (str, optional): The system prompt to use for OpenAI API requests. Defaults to "".
-            default_conversation (Conversation | bool, optional): The default conversation to use for OpenAI API requests. Defaults to True.
-            temperature (float | None, optional): The temperature to use for OpenAI API requests. Defaults to None.
-            reasoning_effort (Literal["minimal", "low", "medium", "high"], optional): The reasoning effort to use for OpenAI API requests. Defaults to "medium".
-            summary_length (Literal["auto", "concise", "detailed"], optional): The summary length to use for OpenAI API requests. Defaults to "auto".
+        """Initialise the assistant client and, optionally, a default conversation.
 
-        Returns:
-            Assistant: An instance of the Assistant class.
+        Args:
+            api_key: Explicit OpenAI API key. When omitted the ``OPENAI_API_KEY`` environment
+                variable must be set.
+            model: Default Responses API model identifier to use for `chat` requests.
+            system_prompt: System instructions prepended to every conversation turn.
+            default_conversation: Pass ``True`` to create a fresh server-side conversation,
+                supply an existing `Conversation` object to reuse it, or set to ``False`` to
+                defer conversation creation.
+            temperature: Optional sampling temperature forwarded to the OpenAI API.
+            reasoning_effort: Optional reasoning effort hint for models that support it.
+            summary_length: Optional reasoning summary length hint for compatible models.
 
         Raises:
-            ValueError: If no API key is provided.
+            ValueError: If neither ``api_key`` nor ``OPENAI_API_KEY`` is provided.
 
-        Examples:
-            bot = Assistant(api_key=None, model="gpt-4o", system_prompt="You are helpful.")
+        Example:
+            >>> assistant = Assistant(system_prompt="You are concise.")  # doctest: +SKIP
+            >>> assistant.model
+            'chatgpt-4o-latest'
 
-
+        Note:
+            When either ``reasoning_effort`` or ``summary_length`` is supplied the assistant
+            constructs a reusable `Reasoning` payload that is automatically applied to every
+            `chat` call.
         """
 
-        self.model = model
-        if not api_key:
-            if not getenv("OPENAI_API_KEY"):
-                raise ValueError("No API key provided.")
-            else:
-                self.api_key = str(getenv("OPENAI_API_KEY"))
-        else:
-            self.api_key = api_key
+        resolved_key = api_key or getenv("OPENAI_API_KEY")
+        if not resolved_key:
+            raise ValueError("No API key provided.")
 
+        self.api_key = str(resolved_key)
+        self.model = model
         self.client = OpenAI(api_key=self.api_key)
         self.system_prompt = system_prompt
         self.temperature = temperature
         self.reasoning_effort = reasoning_effort
         self.summary_length = summary_length
-        if reasoning_effort and summary_length:
-            self.reasoning = Reasoning(effort=reasoning_effort, summary=summary_length)
-
-        else:
-            self.reasoning = None
+        self.reasoning: Reasoning | None = None
 
         self.function_call_list: list[types.FunctionType] = []
 
+        conversation: Conversation | None = None
         if default_conversation is True:
-            self.conversation = self.client.conversations.create()
-            self.conversation_id = self.conversation.id  # type: ignore
-        else:
-            self.conversation = None
-            self.conversation_id = None
+            conversation = self.client.conversations.create()
+        elif isinstance(default_conversation, Conversation):
+            conversation = default_conversation
+
+        self.conversation = conversation
+        self.conversation_id = getattr(conversation, "id", None)
 
         self.stt: Any = None
+        self._refresh_reasoning()
+
+    def _refresh_reasoning(self) -> None:
+        """Rebuild the reusable Reasoning payload from the current configuration."""
+
+        reasoning_kwargs: dict[str, Any] = {}
+        if self.reasoning_effort:
+            reasoning_kwargs["effort"] = self.reasoning_effort
+        if self.summary_length:
+            reasoning_kwargs["summary"] = self.summary_length
+        self.reasoning = Reasoning(**reasoning_kwargs) if reasoning_kwargs else None
 
     def _convert_filepath_to_vector(
         self, list_of_files: list[str]
@@ -337,9 +350,7 @@ class Assistant:
                 return str(result)
         return "" if result is None else str(result)
 
-    def _invoke_tool_function(
-        self, func: types.FunctionType, arguments: str
-    ) -> str:
+    def _invoke_tool_function(self, func: types.FunctionType, arguments: str) -> str:
         """Execute a registered tool with JSON encoded arguments."""
 
         parsed_arguments: Any
@@ -493,7 +504,6 @@ class Assistant:
                 history_input.extend(tool_outputs)
                 request_params["input"] = history_input
 
-
     def _text_stream_generator(self, params_for_response):
         """Yield response text deltas while the streaming API is producing output.
 
@@ -523,99 +533,117 @@ class Assistant:
     def chat(
         self,
         input: str,
-        conv_id: str | None | Conversation | bool = True,
-        images: list["Openai_Images"] = [],
+        conv_id: str | Conversation | None | bool = True,
+        images: Sequence["Openai_Images"] | None = None,
         max_output_tokens: int | None = None,
         store: bool = False,
         web_search: bool = False,
         code_interpreter: bool = False,
-        file_search: list[str] = [],
+        file_search: Sequence[str] | None = None,
         file_search_max_searches: int | None = None,
         tools_required: Literal["none", "auto", "required"] = "auto",
-        custom_tools: list[types.FunctionType] = [],
+        custom_tools: Sequence[types.FunctionType] | None = None,
         return_full_response: bool = False,
-        valid_json: dict = {},
+        valid_json: Mapping[str, Any] | None = None,
         stream: bool = False,
         text_stream: bool = False,
     ) -> str | Generator[str, Any, None] | Response:
-        """
-        Description:
-            This is the chat function
+        """Send a chat request, optionally enabling tools, retrieval, or streaming output.
 
         Args:
-            input: The input text.
-            conv_id: The conversation ID. Defaults to True. Put the conversation ID here. If you want to create a new conversation, put True.
-            max_output_tokens: The maximum output tokens. Defaults to None.
-            store: Whether to store the conversation. Defaults to False.
-            web_search: Whether to use web search.  Defaults to False.
-            code_interpreter: Whether to use code interpreter.  Defaults to False.
-            file_search: The file search. Defaults to [].
-            tools_required: The tools required. Defaults to "auto".
-            custom_tools: The custom tools. Defaults to [].
-            file_search_max_searches: The if file search max searches. Defaults to None.
-            return_full_response: Whether to return the full response. Defaults to False.
-            valid_json: The valid json. Defaults to {}.
+            input: User prompt text to submit to the Responses API.
+            conv_id: Conversation reference. Use ``True`` to reuse the assistant's default
+                conversation, supply a conversation ID or `Conversation` instance, or set to
+                ``False``/``None`` to start a stateless exchange.
+            images: Optional sequence of `Openai_Images` helpers whose payloads will be
+                attached to the request.
+            max_output_tokens: Soft response cap forwarded to the OpenAI API.
+            store: Persist the response to OpenAI's conversation store when ``True``.
+            web_search: Include the web search tool in the toolset.
+            code_interpreter: Include the code interpreter tool in the toolset.
+            file_search: Iterable of local file paths that should be uploaded and searched
+                against for retrieval-augmented responses.
+            file_search_max_searches: Optional maximum search passes for the file-search tool.
+            tools_required: Controls the OpenAI tool choice policy. Use ``"required"`` to force
+                tool execution or ``"none"`` to disable it entirely.
+            custom_tools: Sequence of callables decorated via `Assistant.openai_function` whose
+                schemas will be advertised to the model.
+            return_full_response: When ``True`` return the `Response` object instead of just text.
+            valid_json: Optional mapping describing the JSON schema the model should follow. The
+                prompt is augmented with instructions to favour that structure.
+            stream: Forwarded directly to the OpenAI API to request server streaming.
+            text_stream: When ``True`` yield deltas from the Responses API instead of waiting for
+                completion. Tool results are still resolved between iterations.
 
         Returns:
-            The response text.
+            `str` when the call completes normally, a streaming generator when ``text_stream``
+            is enabled, or the raw `Response` object when ``return_full_response`` (or ``stream``)
+            is requested.
 
-        Raises:
-            ValueError: If the conversation ID is invalid.
+        Example:
+            >>> assistant = Assistant(api_key="sk-test")  # doctest: +SKIP
+            >>> @assistant.openai_function  # doctest: +SKIP
+            ... def describe_city(city: str) -> dict:  # doctest: +SKIP
+            ...     \"\"\"Args:\\n        city: Target city.\"\"\"  # doctest: +SKIP
+            ...     return {"fact": f"{city} is lively."}  # doctest: +SKIP
+            >>> assistant.chat("Tell me about Paris", custom_tools=[describe_city])  # doctest: +SKIP
+            'Paris ...'
 
-        Examples:
-            >>> assistant = Assistant(api_key="YOUR_API_KEY", model="gpt-3.5-turbo")
-            >>> response = assistant.chat("Hello, how are you?")
-            >>> print(response)
-            Hello, how are you?
-
-        ----------
+        Note:
+            `custom_tools` and `self.function_call_list` are merged, deduplicated by schema name,
+            and automatically executed until every tool call is satisfied.
         """
 
-        convo = self.conversation_id if conv_id is True else str(conv_id)
-        if not convo:
-            convo = False
+        conversation_ref: str | None
+        if conv_id is True:
+            conversation_ref = self.conversation_id
+        elif isinstance(conv_id, Conversation):
+            conversation_ref = getattr(conv_id, "id", None)
+        elif conv_id in (False, None):
+            conversation_ref = None
+        else:
+            conversation_ref = str(conv_id)
 
-        returns_flag = True
-        params_for_response = {
+        message_text = input
+        if valid_json:
+            json_hint = json.dumps(valid_json)
+            message_text = (
+                f"{input}\nRESPOND ONLY IN VALID JSON FORMAT LIKE THIS: {json_hint}"
+            )
+
+        user_content: list[dict[str, Any]] = [
+            {
+                "type": "input_text",
+                "text": message_text,
+            }
+        ]
+
+        if images:
+            for image in images:
+                payload_key = "file_id" if image.type == "filepath" else "image_url"
+                payload_value = (
+                    image.image[2]
+                    if image.type != "Base64"
+                    else f"data:image/{image.image[2]}; base64, {image.image[0]}"
+                )
+                user_content.append({"type": "input_image", payload_key: payload_value})
+
+        params_for_response: dict[str, Any] = {
             "input": [
                 {
                     "role": "user",
-                    "content": [
-                        {
-                            "type": "input_text",
-                            "text": (
-                                input
-                                if valid_json == {}
-                                else input
-                                + "RESPOND ONLY IN VALID JSON FORMAT LIKE THIS: "
-                                + json.dumps(valid_json)
-                            ),
-                        }
-                    ],
+                    "content": user_content,
                 }
             ],
-            "instructions": self.system_prompt,
-            "conversation": convo,
+            "instructions": self.system_prompt or None,
+            "conversation": conversation_ref,
             "max_output_tokens": max_output_tokens,
             "store": store,
             "model": self.model,
-            "reasoning": self.reasoning if self.reasoning is not None else None,
+            "reasoning": self.reasoning,
             "tools": [],
             "stream": stream,
         }
-
-        if images:
-            for i in images:
-                params_for_response["input"][0]["content"].append(
-                    {
-                        "type": "input_image",
-                        ("file_id" if i.type == "filepath" else "image_url"): (
-                            i.image[2]
-                            if not i.type == "Base64"
-                            else f"data:image/{i.image[2]}; base64, {i.image[0]}"
-                        ),
-                    }
-                )
 
         if web_search:
             params_for_response["tools"].append({"type": "web_search"})
@@ -625,50 +653,45 @@ class Assistant:
                 {"type": "code_interpreter", "container": {"type": "auto"}}
             )
 
+        vector_bundle: tuple[VectorStore, VectorStore, VectorStores] | None = None
         if file_search:
-            vector = self._convert_filepath_to_vector(file_search)
-
-            if file_search_max_searches is None:
-
-                params_for_response["tools"].append(
-                    {"type": "file_search", "vector_store_ids": vector[1].id}
-                )
-
-            else:
-                params_for_response["tools"].append(
-                    {
-                        "type": "file_search",
-                        "vector_store_ids": vector[1].id,
-                        "max_searches": file_search_max_searches,
-                    }
-                )
+            vector_bundle = self._convert_filepath_to_vector(list(file_search))
+            params_for_response["tools"].append(
+                {
+                    "type": "file_search",
+                    "vector_store_ids": vector_bundle[1].id,
+                    **(
+                        {}
+                        if file_search_max_searches is None
+                        else {"max_searches": file_search_max_searches}
+                    ),
+                }
+            )
 
         params_for_response = {
-            k: v for k, v in params_for_response.items() if v is not None
+            key: value
+            for key, value in params_for_response.items()
+            if value is not None and value is not False
         }
 
-        params_for_response = {
-            k: v for k, v in params_for_response.items() if v is not False
-        }
-
-        if tools_required == "none":
-            params_for_response["tool_choice"] = "none"
-        elif tools_required == "auto":
-            params_for_response["tool_choice"] = "auto"
-        elif tools_required == "required":
-            params_for_response["tool_choice"] = "required"
+        if tools_required != "auto":
+            params_for_response["tool_choice"] = tools_required
 
         builtin_tools = list(self.function_call_list)
-        combined_tools = builtin_tools + list(custom_tools)
-        tool_map, tool_schemas = self._build_tool_map(combined_tools)
-        if tool_schemas:
-            params_for_response["tools"].extend(tool_schemas)
+        user_tools = list(custom_tools) if custom_tools else []
+        combined_tools = builtin_tools + user_tools
+        if combined_tools:
+            tool_map, tool_schemas = self._build_tool_map(combined_tools)
+        else:
+            tool_map, tool_schemas = {}, []
 
-        params_for_response = {
-            k: v for k, v in params_for_response.items() if v is not None
-        }
+        if tool_schemas:
+            params_for_response.setdefault("tools", []).extend(tool_schemas)
+
         resp: Response | None = None
         stream_gen: Generator[str, Any, None] | None = None
+        returns_flag = True
+
         try:
             request_params = dict(params_for_response)
             if "tools" in request_params:
@@ -681,26 +704,32 @@ class Assistant:
 
         except Exception as e:
             print("Error creating response: \n", e)
-            print("\nLine Number : ", e.__traceback__.tb_lineno if isinstance(e, types.TracebackType) else 370)  # type: ignore
+            print(
+                "\nLine Number : ",
+                e.__traceback__.tb_lineno if isinstance(e, types.TracebackType) else 370,
+            )  # type: ignore
             returns_flag = False
 
         finally:
-
             if text_stream:
-                return stream_gen if stream_gen is not None else self._text_stream_generator(params_for_response)
+                return (
+                    stream_gen
+                    if stream_gen is not None
+                    else self._text_stream_generator(params_for_response)
+                )
+
             if store and returns_flag and resp is not None:
                 self.conversation = resp.conversation
 
-            if file_search:
-                vector[2].delete(vector[0].id)
+            if vector_bundle:
+                vector_bundle[2].delete(vector_bundle[0].id)
 
             if returns_flag:
                 if return_full_response or stream:
-                    return resp # type: ignore
+                    return resp  # type: ignore
                 return resp.output_text if resp is not None else ""
 
-            else:
-                return ""
+            return ""
 
     def create_conversation(self, return_id_only: bool = False) -> Conversation | str:
         """
@@ -793,6 +822,15 @@ class Assistant:
         **style**
         The style of the generated images. This parameter is only supported for `dall-e-3`. Must be one of `vivid` or `natural`. Vivid causes the model to lean towards generating hyper-real and dramatic images. Natural causes the model to produce more natural, less hyper-real looking images.
 
+        **return_base64**
+        When ``True`` the base64 payload is returned to the caller instead of writing to disk.
+
+        **make_file**
+        Set to ``True`` to persist the generated image locally using ``save_to_file``.
+
+        **save_to_file**
+        File path used when `make_file` is enabled. The helper appends the correct extension automatically.
+
         Example:
             >>> assistant = Assistant(api_key="sk-test")  # doctest: +SKIP
             >>> image_b64 = assistant.image_generation("Neon city skyline", n=1, return_base64=True)  # doctest: +SKIP
@@ -816,9 +854,7 @@ class Assistant:
             "response_format": "b64_json" if model != "gpt-image-1" else None,
         }
 
-        clean_params = {
-            k: v for k, v in params.items() if v is not None or "" or [] or {}
-        }
+        clean_params = {k: v for k, v in params.items() if v is not None}
 
         try:
             img = self.client.images.generate(**clean_params)
@@ -855,42 +891,45 @@ class Assistant:
         ],
         new_value,
     ):
-        """
-        Update the parameters of the assistant.
+        """Update a single configuration attribute on the assistant instance.
 
         Args:
-            what_to_change (Literal["model", "system_prompt", "temperature", "reasoning_effort", "summary_length", "function_call_list"]): The parameter to change.
-            new_value: The new value for the parameter.
-
-        Returns:
-            None
+            what_to_change: The configuration field to replace.
+            new_value: Value assigned to the selected field.
 
         Raises:
-            ValueError: If the parameter to change is invalid.
+            ValueError: If ``what_to_change`` is not one of the supported keys.
 
-        Examples:
-            >>> assistant.update_assistant("model", "gpt-4o")
-            >>> assistant.update_assistant("system_prompt", "You are a helpful assistant.")
-            >>> assistant.update_assistant("temperature", 0.7)
-            >>> assistant.update_assistant("reasoning_effort", "high")
-            >>> assistant.update_assistant("summary_length", "concise")
-            >>> assistant.update_assistant("function_call_list", [FunctionCall(name="get_current_weather", arguments={"location": "San Francisco"})])
+        Example:
+            >>> assistant = Assistant(api_key="sk-test")  # doctest: +SKIP
+            >>> assistant.update_assistant("system_prompt", "Be concise.")  # doctest: +SKIP
+            >>> assistant.system_prompt  # doctest: +SKIP
+            'Be concise.'
+
+        Note:
+            Updating ``reasoning_effort`` or ``summary_length`` refreshes the cached
+            `Reasoning` helper automatically. When assigning ``function_call_list`` provide
+            callables decorated via `Assistant.openai_function`.
         """
 
-        if what_to_change == "model":
-            self.model = new_value
-        elif what_to_change == "system_prompt":
-            self.system_prompt = new_value
-        elif what_to_change == "temperature":
-            self.temperature = new_value
-        elif what_to_change == "reasoning_effort":
-            self.reasoning_effort = new_value
-        elif what_to_change == "summary_length":
-            self.summary_length = new_value
-        elif what_to_change == "function_call_list":
-            self.function_call_list = new_value
-        else:
-            raise ValueError("Invalid parameter to  change")
+        field_map = {
+            "model": "model",
+            "system_prompt": "system_prompt",
+            "temperature": "temperature",
+            "reasoning_effort": "reasoning_effort",
+            "summary_length": "summary_length",
+            "function_call_list": "function_call_list",
+        }
+
+        try:
+            attribute_name = field_map[what_to_change]
+        except KeyError as exc:
+            raise ValueError("Invalid parameter to change") from exc
+
+        setattr(self, attribute_name, new_value)
+
+        if attribute_name in {"reasoning_effort", "summary_length"}:
+            self._refresh_reasoning()
 
     def text_to_speech(
         self,
@@ -918,38 +957,29 @@ class Assistant:
         play_in_background: bool = False,
         save_to_file_path: str | None = None,
     ):
-        """
-        Convert text to speech
+        """Convert text into speech audio using OpenAI's text-to-speech API.
 
         Args:
-            input (str): The text to convert to speech
-            model (Literal['tts-1', 'tts-1-hd', 'gpt-4o-mini-tts'], optional): The model to use. Defaults to "tts-1".
-            voice (str | Literal['alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse', 'marin', 'cedar'], optional): The voice to use. Defaults to "alloy".
-            instructions (str, optional): The instructions to follow. Defaults to "NOT_GIVEN".
-            response_format (Literal['mp3', 'opus', 'aac', 'flac', 'wav', 'pcm'], optional): The response format to use. Defaults to "wav".
-            speed (float, optional): The speed to use. Defaults to 1.
-            play (bool, optional): Whether to play the audio. Defaults to True.
-            save_to_file_path (str | None, optional): The path to save the audio to. Defaults to None.
-
+            input: Text content to synthesise.
+            model: Text-to-speech model identifier.
+            voice: Voice preset or literal name supported by the selected model.
+            instructions: Optional style instructions forwarded to the API.
+            response_format: Output container format to request.
+            speed: Playback rate multiplier accepted by the API.
+            play: When ``True`` immediately play the generated audio.
+            play_in_background: Set to ``True`` to play audio asynchronously.
+            save_to_file_path: Destination path for persisting the audio artefact.
 
         Returns:
-            None
+            None. Audio data is saved to disk and/or played as a side effect.
 
-        Raises:
-            None
+        Example:
+            >>> assistant = Assistant(api_key="sk-test")  # doctest: +SKIP
+            >>> assistant.text_to_speech("Daily stand-up is in 5 minutes.", voice="sage", save_to_file_path="standup.wav")  # doctest: +SKIP
 
-        Examples:
-            ```python
-                assistant.text_to_speech(input="hello", voice="alloy", save_to_file_path="test.wav", response_format="wav")
-            ```
-
-            ```python
-                assistant.text_to_speech(input="hello", voice="alloy", response_format="wav", play=True)
-            ```
-
-            ```python
-                assistant.text_to_speech(input="hello", voice="alloy", response_format="wav", play=True, save_to_file_path="test.wav")
-            ```
+        Note:
+            Non-``wav`` formats are written successfully but cannot be played inline by the
+            helper; set ``play=False`` when requesting alternative formats.
         """
         params = {
             "input": input,
@@ -993,7 +1023,8 @@ class Assistant:
         store: bool | None = False,
         web_search: bool | None = None,
         code_interpreter: bool | None = None,
-        file_search: list[str] | None = None,
+        file_search: Sequence[str] | None = None,
+        custom_tools: Sequence[types.FunctionType] | None = None,
         tools_required: Literal["none", "auto", "required"] = "auto",
         model: Literal["tts-1", "tts-1-hd", "gpt-4o-mini-tts"] = "tts-1",
         voice: (
@@ -1018,41 +1049,38 @@ class Assistant:
         print_response: bool = False,
         save_to_file_path: str | None = None,
     ) -> str:
-        """
-        This is the full text to speech function.
-        Args:
-            input: The input text. Defaults to True.
-            conv_id: The conversation ID. defaults to True. If True, a the default conversation ID will be used.
-            max_output_tokens: The maximum output tokens. Defaults to None.
-            store: Whether to store the conversation. Defaults to False.
-            web_search: Whether to use web search. Defaults to None.
-            code_interpreter: Whether to use code interpreter. Defaults to None.
-            file_search: The file search. Defaults to None.
-            tools_required: The tools required. Defaults to "auto".
-            model: The model. Defaults to "tts-1".
-            voice: The voice.   Defaults to "alloy".
-            instructions: The instructions. Defaults to "NOT_GIVEN".
-            response_format: The response format. Defaults to "wav".
-            speed: The speed. Defaults to 1.
-            play: Whether to play the audio. Defaults to True.
-            print_response: Whether to print the response. Defaults to False.
-            save_to_file_path: The save to file path. Defaults to None.
+        """Ask the model a question and immediately voice the reply.
 
+        Args:
+            input: User prompt provided to `chat` before audio playback.
+            conv_id: Conversation reference mirroring the `chat` parameter of the same name.
+            max_output_tokens: Optional cap applied to the intermediate chat response.
+            store: Persist the intermediate chat result to the conversation store.
+            web_search: Enable the web search tool during the chat request.
+            code_interpreter: Enable the code interpreter tool during the chat request.
+            file_search: Iterable of file paths to ground the chat response.
+            custom_tools: Additional tool callables (decorated via `openai_function`) available to the chat phase.
+            tools_required: Passed through to the underlying `chat` call.
+            model: Text-to-speech model used to synthesise audio.
+            voice: Voice preset for the speech model.
+            instructions: Optional style guidance for the speech synthesis.
+            response_format: Audio container requested from the speech API.
+            speed: Playback rate multiplier.
+            play: Immediately play the generated audio.
+            print_response: Echo the intermediate chat result before speaking.
+            save_to_file_path: Persist the audio file when provided; otherwise a temporary file is used.
 
         Returns:
-            The response.
-
-        Raises:
-            Exception: If the response format is not wav.
+            str: The text generated by the chat phase (the same content that is spoken aloud).
 
         Example:
-            ```python
-            >>> assistant.full_text_to_speech("Hello, world!", model="tts-1", voice="alloy", instructions="NOT_GIVEN", response_format="wav", speed=1, play=True, save_to_file_path=None)
-            ```
+            >>> assistant = Assistant(api_key="sk-test")  # doctest: +SKIP
+            >>> assistant.full_text_to_speech("Give me a 1 sentence update.", voice="verse", play=False)  # doctest: +SKIP
+            'Project launch rehearsals are on track for tomorrow.'
 
-            ```python
-            >>> assistant.full_text_to_speech("Hello, world!", model="tts-1", voice="alloy", instructions="NOT_GIVEN", response_format="wav", speed=1, play=True, save_to_file_path="test.wav")
-            ```
+        Note:
+            All keyword arguments not listed are forwarded directly to `Assistant.chat`. Tool
+            outputs are resolved before audio playback begins.
         """
         param = {
             "input": input,
@@ -1061,7 +1089,8 @@ class Assistant:
             "store": store,
             "web_search": web_search,
             "code_interpreter": code_interpreter,
-            "file_search": file_search,
+            "file_search": list(file_search) if file_search else None,
+            "custom_tools": list(custom_tools) if custom_tools else None,
             "tools_required": tools_required,
         }
 
@@ -1190,9 +1219,12 @@ class Assistant:
 
         Note:
             Any provided keys are applied directly to instance attributes without additional validation.
+            Updates to ``reasoning_effort`` or ``summary_length`` automatically rebuild the cached reasoning payload.
         """
         for key, value in __mass_update_helper.items():
             setattr(self, key, value)
+        if {"reasoning_effort", "summary_length"} & set(__mass_update_helper):
+            self._refresh_reasoning()
 
 
 if __name__ == "__main__":
@@ -1213,14 +1245,17 @@ if __name__ == "__main__":
 
         Note:
             The wrapped function receives the same call signature it declared; only metadata changes.
-            
+
         Parameters:
-            
+
         """
         print("hi bob")
 
-    for response in bob.chat("say hi to bob", custom_tools=[say_hi_to_bob], text_stream=True):
+    for response in bob.chat(
+        "say hi to bob", custom_tools=[say_hi_to_bob], text_stream=True
+    ):
         if response == "done":
             break
         else:
             print(response)
+

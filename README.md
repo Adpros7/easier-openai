@@ -6,8 +6,8 @@ Easier OpenAI wraps the official OpenAI Python SDK so you can drive modern assis
 - High level `Assistant` wrapper with conversation memory, tool toggles, and streaming helpers.
 - Temporary vector store ingestion to ground answers in local notes or documents.
 - Text to speech and speech to text bridges designed for quick experiments or internal tooling.
+- Built-in helper for defining and executing OpenAI function tools without leaving Python.
 - Lazy module loading so `import easier_openai` stays fast even as optional helpers expand.
-- Optional `openai_function` decorator and schema helpers to make tool definition repeatable.
 - Type hints and comprehensive inline docstrings across the project for easier discovery.
 
 ## Installation
@@ -33,14 +33,14 @@ print(response_text)
 ```
 
 ## Tool Calling Made Simple
-Use `Assistant.openai_function` (also re-exported at the package root) to convert regular functions into structured tool definitions:
+Use `Assistant.openai_function` to convert regular functions into structured tool definitions and hand them to `chat`:
 
 ```python
-from easier_openai import Assistant, openai_function
+from easier_openai import Assistant
 
 assistant = Assistant()
 
-@openai_function
+@assistant.openai_function
 def look_up_fact(topic: str) -> dict:
     """Return a knowledge base lookup result for the given topic."""
     return {"topic": topic}
@@ -49,6 +49,19 @@ assistant.chat(
     "Tell me about the ozone layer using the fact tool.",
     custom_tools=[look_up_fact],
 )
+```
+
+### Stream Responses with Tools
+```python
+stream = assistant.chat(
+    "Summarise launch blockers for the robotics demo",
+    custom_tools=[look_up_fact],
+    text_stream=True,
+)
+for delta in stream:
+    if delta == "done":
+        break
+    print(delta, end="", flush=True)
 ```
 
 ## Ground Responses With Your Files
@@ -74,6 +87,9 @@ assistant.full_text_to_speech(
 )
 ```
 
+`full_text_to_speech` accepts the same keyword arguments as `chat`, so you can pass
+`custom_tools`, `file_search`, or `web_search` before the reply is spoken.
+
 Or capture short dictated prompts without leaving the terminal:
 
 ```python
@@ -96,6 +112,7 @@ image_client = Openai_Images("samples/promenade.jpg")
 - `system_prompt`: Injected once per conversation to shape assistant behaviour.
 - `reasoning_effort` and `summary_length`: Fine tune reasoning models via the official API semantics.
 - `temperature`: Pass through value mapped to OpenAI responses for deterministic vs creative answers.
+- `function_call_list`: Pre-register decorated tool callables that should accompany every `chat` request.
 - `default_conversation`: Set to `False` if you prefer to supply conversation IDs manually.
 - `mass_update(**kwargs)`: Bulk update configuration attributes using keyword arguments validated by type hints.
 ```python
