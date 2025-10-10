@@ -17,6 +17,10 @@ from openai import OpenAI
 from openai.resources.vector_stores.vector_stores import VectorStores
 from openai.types.conversations.conversation import Conversation
 from openai.types.shared_params import Reasoning, ResponsesModel
+from openai.types.responses.response import Response
+from openai.types.responses.response_function_tool_call import (
+    ResponseFunctionToolCall,
+)
 from openai.types.vector_store import VectorStore
 from playsound3 import playsound
 from syntaxmod import wait_until
@@ -131,6 +135,8 @@ class Assistant:
 
         else:
             self.reasoning = None
+
+        self.function_call_list: list[types.FunctionType] = []
 
         if default_conversation is True:
             self.conversation = self.client.conversations.create()
@@ -296,6 +302,196 @@ class Assistant:
         func.schema = schema
         return func  # type: ignore
 
+    def _build_tool_map(
+        self, tools: list[types.FunctionType]
+    ) -> tuple[dict[str, types.FunctionType], list[dict[str, Any]]]:
+        """Create a mapping of tool names to callables and collect their schemas."""
+
+        tool_map: dict[str, types.FunctionType] = {}
+        schemas: list[dict[str, Any]] = []
+
+        for tool in tools:
+            schema = getattr(tool, "schema", None)
+            if not schema:
+                warnings.warn(
+                    f"Skipping tool {tool.__name__} because it lacks an OpenAI schema."
+                )
+                continue
+
+            name = schema.get("name", tool.__name__)
+            tool_map[name] = tool
+            if schema not in schemas:
+                schemas.append(schema)
+
+        return tool_map, schemas
+
+    def _format_tool_result(self, result: Any) -> str:
+        """Serialize tool results into a string payload for the API."""
+
+        if isinstance(result, (dict, list)):
+            try:
+                return json.dumps(result)
+            except TypeError:
+                return str(result)
+        return "" if result is None else str(result)
+
+    def _invoke_tool_function(
+        self, func: types.FunctionType, arguments: str
+    ) -> str:
+        """Execute a registered tool with JSON encoded arguments."""
+
+        parsed_arguments: Any
+        if arguments:
+            try:
+                parsed_arguments = json.loads(arguments)
+            except json.JSONDecodeError:
+                parsed_arguments = {}
+        else:
+            parsed_arguments = {}
+
+        try:
+            if isinstance(parsed_arguments, dict):
+                result = func(**parsed_arguments)
+            elif isinstance(parsed_arguments, list):
+                result = func(*parsed_arguments)
+            else:
+                result = func(parsed_arguments)
+        except Exception as exc:  # pragma: no cover - surface tool errors
+            raise RuntimeError(
+                f"Error while executing tool '{func.__name__}': {exc}"
+            ) from exc
+
+        return self._format_tool_result(result)
+
+    def _gather_function_calls(
+        self, response: Response
+    ) -> list[ResponseFunctionToolCall]:
+        """Extract all function tool calls from an API response."""
+
+        calls: list[ResponseFunctionToolCall] = []
+        for item in getattr(response, "output", []) or []:
+            if getattr(item, "type", None) == "function_call":
+                calls.append(item)  # type: ignore[arg-type]
+        return calls
+
+    def _prepare_tool_outputs(
+        self,
+        tool_calls: list[ResponseFunctionToolCall],
+        tool_map: dict[str, types.FunctionType],
+    ) -> list[dict[str, Any]]:
+        """Execute model requested tools and package outputs for the API."""
+
+        outputs: list[dict[str, Any]] = []
+        for call in tool_calls:
+            func = tool_map.get(call.name)
+            if not func:
+                warnings.warn(
+                    f"No tool registered for function call '{call.name}'. Skipping."
+                )
+                continue
+
+            output = self._invoke_tool_function(func, call.arguments)
+            outputs.append(
+                {
+                    "type": "function_call_output",
+                    "call_id": call.call_id,
+                    "output": output,
+                }
+            )
+
+        return outputs
+
+    def _resolve_response_with_tools(
+        self,
+        params: dict[str, Any],
+        tool_map: dict[str, types.FunctionType],
+    ) -> Response:
+        """Call the Responses API and automatically fulfil tool invocations."""
+
+        request_params = dict(params)
+        request_params.pop("stream", None)
+        request_params.setdefault("tools", list(params.get("tools", [])))
+        history_input = list(request_params.get("input", []))
+        conversation_id: str | None = (
+            request_params.get("conversation")
+            if isinstance(request_params.get("conversation"), str)
+            else None
+        )
+
+        response = self.client.responses.create(**request_params)
+
+        while tool_map:
+            tool_calls = self._gather_function_calls(response)
+            if not tool_calls:
+                break
+
+            tool_outputs = self._prepare_tool_outputs(tool_calls, tool_map)
+            if not tool_outputs:
+                break
+
+            conversation_id = (
+                getattr(response.conversation, "id", None) or conversation_id
+            )
+
+            if conversation_id:
+                request_params["conversation"] = conversation_id
+                request_params["input"] = tool_outputs
+            else:
+                history_input.extend(tool_outputs)
+                request_params["input"] = history_input
+
+            response = self.client.responses.create(**request_params)
+
+        return response
+
+    def _function_call_stream(
+        self, params: dict[str, Any], tool_map: dict[str, types.FunctionType]
+    ) -> Generator[str, Any, None]:
+        """Yield streamed text while resolving tool calls between iterations."""
+
+        request_params = dict(params)
+        request_params.pop("stream", None)
+        request_params.setdefault("tools", list(params.get("tools", [])))
+        history_input = list(request_params.get("input", []))
+        conversation_id: str | None = (
+            request_params.get("conversation")
+            if isinstance(request_params.get("conversation"), str)
+            else None
+        )
+
+        while True:
+            if not conversation_id:
+                request_params["input"] = history_input
+
+            with self.client.responses.stream(**request_params) as streamer:
+                for event in streamer:
+                    if event.type == "response.output_text.delta":
+                        yield event.delta
+
+                response = streamer.get_final_response()
+
+            tool_calls = self._gather_function_calls(response)
+            if not tool_calls or not tool_map:
+                yield "done"
+                break
+
+            tool_outputs = self._prepare_tool_outputs(tool_calls, tool_map)
+            if not tool_outputs:
+                yield "done"
+                break
+
+            conversation_id = (
+                getattr(response.conversation, "id", None) or conversation_id
+            )
+
+            if conversation_id:
+                request_params["conversation"] = conversation_id
+                request_params["input"] = tool_outputs
+            else:
+                history_input.extend(tool_outputs)
+                request_params["input"] = history_input
+
+
     def _text_stream_generator(self, params_for_response):
         """Yield response text deltas while the streaming API is producing output.
 
@@ -460,24 +656,26 @@ class Assistant:
         elif tools_required == "required":
             params_for_response["tool_choice"] = "required"
 
-        if custom_tools:
-            for tool in custom_tools:
-                try:
-                    params_for_response["tools"].append(tool.schema)
-                except Exception as e:
-                    print("Error adding custom tool: \n", e)
-                    print("\nLine Number : ", e.__traceback__.tb_lineno if isinstance(e, types.TracebackType) else 355)  # type: ignore
-                    continue
+        builtin_tools = list(self.function_call_list)
+        combined_tools = builtin_tools + list(custom_tools)
+        tool_map, tool_schemas = self._build_tool_map(combined_tools)
+        if tool_schemas:
+            params_for_response["tools"].extend(tool_schemas)
 
         params_for_response = {
             k: v for k, v in params_for_response.items() if v is not None
         }
+        resp: Response | None = None
+        stream_gen: Generator[str, Any, None] | None = None
         try:
-            if not stream:
-                resp = self.client.responses.create(**params_for_response)
+            request_params = dict(params_for_response)
+            if "tools" in request_params:
+                request_params["tools"] = list(request_params["tools"])
 
-            elif stream:
-                resp = self.client.responses.create(**params_for_response)
+            if text_stream:
+                stream_gen = self._function_call_stream(request_params, tool_map)
+            else:
+                resp = self._resolve_response_with_tools(request_params, tool_map)
 
         except Exception as e:
             print("Error creating response: \n", e)
@@ -487,8 +685,8 @@ class Assistant:
         finally:
 
             if text_stream:
-                return self._text_stream_generator(params_for_response)
-            if store:
+                return stream_gen if stream_gen is not None else self._text_stream_generator(params_for_response)
+            if store and returns_flag and resp is not None:
                 self.conversation = resp.conversation
 
             if file_search:
@@ -497,7 +695,7 @@ class Assistant:
             if returns_flag:
                 if return_full_response or stream:
                     return resp
-                return resp.output_text
+                return resp.output_text if resp is not None else ""
 
             else:
                 return ""
