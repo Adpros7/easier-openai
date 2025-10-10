@@ -3,5 +3,5 @@ simpleaudio
 openai_stt
 typing_extensions
 huggingface-hub
-pygame
+openai-whisper
 playsound3

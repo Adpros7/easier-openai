@@ -26,7 +26,7 @@ dependencies = [
     "openai-stt",
     "typing-extensions",
     "huggingface-hub",
-    "pygame",
+    "openai-whisper",
     "playsound3",
 ]
 [project.optional-dependencies]
@@ -44,5 +44,10 @@ Issues = "https://github.com/Adpros7/easier-gpt/issues"
 [tool.setuptools]
 packages = ["easier_openai"]
 include-package-data = true
+
+
+
+
+
 
 
