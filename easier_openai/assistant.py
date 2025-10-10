@@ -49,6 +49,14 @@ def preload_openai_stt():
 
     Returns:
         subprocess.Popen: Handle to the loader process so callers can verify startup.
+
+    Example:
+        >>> loader = preload_openai_stt()
+        >>> loader.poll() is None
+        True
+
+    Note:
+        Call ``loader.terminate()`` once the warm-up process is no longer needed.
     """
     return subprocess.Popen(
         [sys.executable, "-c", "import openai_stt"],
@@ -61,7 +69,16 @@ STT_LOADER = preload_openai_stt()
 
 
 class Assistant:
-    """High-level helper that orchestrates OpenAI chat, tools, vector stores, audio, and images."""
+    """High-level helper that orchestrates OpenAI chat, tools, vector stores, audio, and images.
+
+    Example:
+        >>> assistant = Assistant(api_key=\"sk-test\", model=\"gpt-4o-mini\")
+        >>> assistant.chat(\"Ping!\")  # doctest: +ELLIPSIS
+        '...'
+
+    Note:
+        The assistant reuses a shared speech-to-text loader so audio helpers start quickly.
+    """
 
     def __init__(
         self,
@@ -140,6 +157,15 @@ class Assistant:
         Raises:
             ValueError: If the provided file list is empty.
             FileNotFoundError: When any supplied path does not exist.
+
+        Example:
+            >>> assistant = Assistant(api_key=\"sk-test\")  # doctest: +SKIP
+            >>> summary, retrieved, manager = assistant._convert_filepath_to_vector([\"docs/guide.md\"])  # doctest: +SKIP
+            >>> summary.name  # doctest: +SKIP
+            'vector_store'
+
+        Note:
+            The helper uploads synchronously; large files may take several seconds to index.
         """
         if not isinstance(list_of_files, list) or len(list_of_files) == 0:
             raise ValueError("list_of_files must be a non-empty list of file paths.")
@@ -166,6 +192,18 @@ class Assistant:
 
         Returns:
             dict: The OpenAI function dictionary.
+
+        Example:
+            >>> assistant = Assistant(api_key=\"sk-test\")  # doctest: +SKIP
+            >>> @assistant.openai_function  # doctest: +SKIP
+            ... def greet(name: str) -> dict:  # doctest: +SKIP
+            ...     \"\"\"Description:\\n        Make a friendly greeting.\\n        Args:\\n            name: Person to greet.\\n        \"\"\"  # doctest: +SKIP
+            ...     return {\"message\": f\"Hello {name}!\"}  # doctest: +SKIP
+            >>> greet.schema[\"name\"]  # doctest: +SKIP
+            'greet'
+
+        Note:
+            The wrapped function receives the same call signature it declared; only metadata changes.
         """
         if not isinstance(func, types.FunctionType):
             raise TypeError("Expected a plain function (types.FunctionType)")
@@ -180,6 +218,14 @@ class Assistant:
 
             Returns:
                 dict: Key/value mapping describing parameters defined in the block.
+
+            Example:
+                If the docstring contains::
+
+                    Args:
+                        city: The city to describe.
+
+                then ``extract_block("Args")`` returns ``{"city": "The city to describe."}``.
             """
             pattern = re.compile(
                 rf"{name}:\s*\n((?:\s+.+\n?)+?)(?=^[A-Z][A-Za-z_ ]*:\s*$|$)",
@@ -198,7 +244,16 @@ class Assistant:
             return block_dict
 
         def extract_description() -> str:
-            """Return the free-form description block from the function docstring."""
+            """Return the free-form description block from the function docstring.
+
+            Example:
+                Given a section like::
+
+                    Description:
+                        Provide a short overview.
+
+                the helper returns ``\"Provide a short overview.\"``.
+            """
             pattern = re.compile(
                 r"Description:\s*\n((?:\s+.+\n?)+?)(?=^[A-Z][A-Za-z_ ]*:\s*$|$)",
                 re.MULTILINE,
@@ -250,6 +305,15 @@ class Assistant:
 
         Yields:
             str: Individual text fragments or the sentinel string ``"done"``.
+
+        Example:
+            >>> assistant = Assistant(api_key=\"sk-test\")  # doctest: +SKIP
+            >>> stream = assistant._text_stream_generator({\"input\": \"Hello\"})  # doctest: +SKIP
+            >>> next(stream)  # doctest: +SKIP
+            'Hel'
+
+        Note:
+            This helper is primarily used internally when ``text_stream=True`` is passed to ``chat``.
         """
         with self.client.responses.stream(**params_for_response) as streamer:
             for event in streamer:
@@ -440,11 +504,22 @@ class Assistant:
 
     def create_conversation(self, return_id_only: bool = False) -> Conversation | str:
         """
-        Create a conversation
+        Create a conversation.
 
         Args:
-            return_id_only (bool, optional): If True, return only the conversation ID, by default False
-        ----------
+            return_id_only (bool, optional): If True, return only the conversation ID, by default False.
+
+        Returns:
+            Conversation | str: The full conversation object or just its ID.
+
+        Example:
+            >>> assistant = Assistant(api_key=\"sk-test\")  # doctest: +SKIP
+            >>> convo_id = assistant.create_conversation(return_id_only=True)  # doctest: +SKIP
+            >>> convo_id.startswith(\"conv_\")  # doctest: +SKIP
+            True
+
+        Note:
+            Reuse the returned conversation ID to continue multi-turn exchanges.
         """
 
         conversation = self.client.conversations.create()
@@ -517,6 +592,15 @@ class Assistant:
 
         **style**
         The style of the generated images. This parameter is only supported for `dall-e-3`. Must be one of `vivid` or `natural`. Vivid causes the model to lean towards generating hyper-real and dramatic images. Natural causes the model to produce more natural, less hyper-real looking images.
+
+        Example:
+            >>> assistant = Assistant(api_key="sk-test")  # doctest: +SKIP
+            >>> image_b64 = assistant.image_generation("Neon city skyline", n=1, return_base64=True)  # doctest: +SKIP
+            >>> isinstance(image_b64, str)  # doctest: +SKIP
+            True
+
+        Note:
+            When ``make_file=True``, provide ``save_to_file`` with a writable path to persist the image.
         """
         params = {
             "model": model,
@@ -839,6 +923,15 @@ class Assistant:
 
         Returns:
             str: The recognized transcript.
+
+        Example:
+            >>> assistant = Assistant(api_key=\"sk-test\")  # doctest: +SKIP
+            >>> transcript = assistant.speech_to_text(mode=\"vad\", model=\"base.en\")  # doctest: +SKIP
+            >>> isinstance(transcript, str)  # doctest: +SKIP
+            True
+
+        Note:
+            The first invocation warms up the speech model and can take noticeably longer.
         """
         wait_until(not STT_LOADER.poll() is None)
         import openai_stt as stt
@@ -863,7 +956,18 @@ class Assistant:
         return result
 
     class __mass_update_helper(TypedDict, total=False):
-        """TypedDict describing the accepted keyword arguments for `mass_update`."""
+        """TypedDict describing the accepted keyword arguments for `mass_update`.
+
+        Example:
+            >>> from typing import get_type_hints
+            >>> hints = get_type_hints(Assistant.__mass_update_helper)
+            >>> sorted(hints.keys())
+            ['function_call_list', 'model', 'reasoning_effort', 'summary_length', 'system_prompt', 'temperature']
+
+        Note:
+            The helper is intended for type checkers and IDEs; you rarely need to instantiate it directly.
+        """
+
         model: ResponsesModel
         system_prompt: str
         temperature: float
@@ -877,6 +981,15 @@ class Assistant:
         Args:
             **__mass_update_helper: Arbitrary subset of Assistant configuration
                 fields such as ``model`` or ``temperature``.
+
+        Example:
+            >>> assistant = Assistant(api_key=\"sk-test\")  # doctest: +SKIP
+            >>> assistant.mass_update(model=\"gpt-4o-mini\", temperature=0.1)  # doctest: +SKIP
+            >>> assistant.temperature  # doctest: +SKIP
+            0.1
+
+        Note:
+            Any provided keys are applied directly to instance attributes without additional validation.
         """
         for key, value in __mass_update_helper.items():
             setattr(self, key, value)
@@ -890,10 +1003,3 @@ if __name__ == "__main__":
     print(
         bob.speech_to_text(mode="vad", model="gpt-4o-transcribe", log_directions=True)
     )
-
-
-
-
-
-
-

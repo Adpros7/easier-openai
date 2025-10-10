@@ -7,11 +7,30 @@ from easier_openai import Assistant
 
 
 class Openai_Images(Assistant):
-    """Simplified interface for classifying and uploading image payloads to OpenAI."""
+    """Simplified interface for classifying and uploading image payloads to OpenAI.
+
+    Example:
+        >>> helper = Openai_Images("https://example.com/cat.png")  # doctest: +SKIP
+        >>> helper.type
+        'image_url'
+
+    Note:
+        Inherits all assistant capabilities so you can immediately call vision-enabled methods.
+    """
 
     def __init__(self, image: str):
-        """Parameters:
-        image (str): The image to use for OpenAI API requests Can be Base64, Filepath, or URL.
+        """Initialise the helper and classify the provided image reference.
+
+        Args:
+            image: Base64 content, filesystem path, or HTTP(S) URL pointing to an image.
+
+        Example:
+            >>> helper = Openai_Images("samples/photo.jpg")  # doctest: +SKIP
+            >>> helper.image[1]
+            'filepath'
+
+        Note:
+            The parent ``Assistant`` initialises with default arguments; adjust attributes after construction if necessary.
         """
 
         super().__init__()
@@ -27,6 +46,15 @@ class Openai_Images(Assistant):
             Returns:
                 Literal[str]: One of ``\"image_url\"``, ``\"Base64\"``, ``\"filepath\"``,
                 or ``\"unknown\"`` indicating how the image should be processed.
+
+            Example:
+                >>> _classify_input("https://example.com/cat.png")  # doctest: +SKIP
+                'image_url'
+                >>> _classify_input("/tmp/cat.png")  # doctest: +SKIP
+                'filepath'
+
+            Note:
+                Inputs that fail all checks surface as ``\"unknown\"`` so callers can raise helpful errors.
             """
             # Check URL
             parsed = urlparse(s)

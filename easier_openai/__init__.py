@@ -31,7 +31,16 @@ if TYPE_CHECKING:
 
 
 def __getattr__(name: str) -> Any:
-    """Load heavy modules lazily when their exports are first accessed."""
+    """Load heavy modules lazily when their exports are first accessed.
+
+    Example:
+        >>> from easier_openai import Assistant  # triggers __getattr__
+        >>> isinstance(Assistant, type)
+        True
+
+    Note:
+        Resolved attributes are memoised on the module so subsequent imports are immediate.
+    """
     try:
         module_name, attr_name = _LAZY_EXPORTS[name]
     except KeyError:  # pragma: no cover - defers to Python's default error
@@ -44,7 +53,12 @@ def __getattr__(name: str) -> Any:
 
 
 def __dir__() -> List[str]:
-    """Expose lazy exports when introspecting the module via dir()."""
+    """Expose lazy exports when introspecting the module via dir().
+
+    Example:
+        >>> \"Assistant\" in __dir__()
+        True
+    """
     return sorted({*globals(), *_LAZY_EXPORTS})
 
 

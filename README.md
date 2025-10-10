@@ -98,6 +98,11 @@ image_client = Openai_Images("samples/promenade.jpg")
 - `temperature`: Pass through value mapped to OpenAI responses for deterministic vs creative answers.
 - `default_conversation`: Set to `False` if you prefer to supply conversation IDs manually.
 - `mass_update(**kwargs)`: Bulk update configuration attributes using keyword arguments validated by type hints.
+```python
+assistant.mass_update(model="gpt-4o-mini", temperature=0.2)
+assistant.mass_update(reasoning_effort="high", summary_length="concise")
+```
+
 
 ## Developer Notes
 - Every public function and class ships with contextual docstrings to make the codebase self-documenting.
