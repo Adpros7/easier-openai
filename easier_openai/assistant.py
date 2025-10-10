@@ -706,7 +706,7 @@ class Assistant:
             print("Error creating response: \n", e)
             print(
                 "\nLine Number : ",
-                e.__traceback__.tb_lineno if isinstance(e, types.TracebackType) else 370,
+                e.__traceback__.tb_lineno if isinstance(e, types.TracebackType) else 709,
             )  # type: ignore
             returns_flag = False
 
