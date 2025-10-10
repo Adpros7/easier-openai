@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from threading import BrokenBarrierError
 import types
 import warnings
 from os import getenv
@@ -189,7 +190,7 @@ class Assistant:
                 )
         return vector_store_create, vector_store, vector
 
-    def openai_function(self, func: types.FunctionType) -> dict:
+    def openai_function(self, func: types.FunctionType) -> types.FunctionType:
         """
         Decorator for OpenAI functions.
 
@@ -197,7 +198,7 @@ class Assistant:
             func (types.FunctionType): The function to decorate.
 
         Returns:
-            dict: The OpenAI function dictionary.
+            types.FunctionType: The original function augmented with a ``schema`` attribute.
 
         Example:
             >>> assistant = Assistant(api_key=\"sk-test\")  # doctest: +SKIP
@@ -288,10 +289,11 @@ class Assistant:
             if required_flag:
                 required.append(name)
 
+        doc = str(inspect.getdoc(func))
         schema = {
             "type": "function",
             "name": func.__name__,
-            "description": description or func.__doc__.strip().split("\n")[0],  # type: ignore
+            "description": description or doc.strip().split("\n")[0],  # type: ignore
             "parameters": {
                 "type": "object",
                 "properties": properties,
@@ -535,7 +537,7 @@ class Assistant:
         valid_json: dict = {},
         stream: bool = False,
         text_stream: bool = False,
-    ) -> str | Generator[str, Any, None]:
+    ) -> str | Generator[str, Any, None] | Response:
         """
         Description:
             This is the chat function
@@ -694,7 +696,7 @@ class Assistant:
 
             if returns_flag:
                 if return_full_response or stream:
-                    return resp
+                    return resp # type: ignore
                 return resp.output_text if resp is not None else ""
 
             else:
@@ -1198,6 +1200,27 @@ if __name__ == "__main__":
         api_key=None, model="gpt-4o", system_prompt="You are a helpful assistant."
     )
 
-    print(
-        bob.speech_to_text(mode="vad", model="gpt-4o-transcribe", log_directions=True)
-    )
+    @bob.openai_function
+    def say_hi_to_bob():
+        """Says hi to bob.
+
+        Returns:
+            str: "hi bob"
+
+        Example:
+            >>> say_hi_to_bob()  # doctest: +SKIP
+            'hi bob'
+
+        Note:
+            The wrapped function receives the same call signature it declared; only metadata changes.
+            
+        Parameters:
+            
+        """
+        print("hi bob")
+
+    for response in bob.chat("say hi to bob", custom_tools=[say_hi_to_bob], text_stream=True):
+        if response == "done":
+            break
+        else:
+            print(response)
