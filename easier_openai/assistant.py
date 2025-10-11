@@ -1094,7 +1094,7 @@ class Assistant:
             "tools_required": tools_required,
         }
 
-        resp = self._chat(**param)
+        resp = self.chat(**param)
 
         say_params = {
             "model": model,
@@ -1109,7 +1109,7 @@ class Assistant:
 
         if print_response:
             print(resp)
-        self._text_to_speech(**say_params)
+        self.text_to_speech(**say_params)
 
         return resp  # type: ignore
 
