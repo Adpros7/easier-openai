@@ -8,18 +8,85 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     steps:
-      - name: Send issue details to Slack
+      - name: Notify Slack about new issue
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_USER_TOKEN: ${{ secrets.SLACK_USER_TOKEN }}   # xoxp-... token (acts like real user)
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}     # xoxb-... fallback
+          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}   # e.g. C01234567
+          CODEX_USER_ID: ${{ secrets.CODEX_USER_ID }}         # e.g. U09KSTF3BNF
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_USER: ${{ github.event.issue.user.login }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
         run: |
-          payload=$(jq -n \
-            --arg user "${{ github.event.issue.user.login }}" \
-            --arg title "${{ github.event.issue.title }}" \
-            --arg body "${{ github.event.issue.body }}" \
-            --arg url "${{ github.event.issue.html_url }}" \
+          set -euo pipefail
+
+          # pick whichever token is available
+          TOKEN="${SLACK_USER_TOKEN:-}"
+          if [ -z "$TOKEN" ]; then
+            TOKEN="${SLACK_BOT_TOKEN:-}"
+          fi
+          if [ -z "$TOKEN" ]; then
+            echo "Missing Slack token. Add SLACK_USER_TOKEN or SLACK_BOT_TOKEN to repo secrets."
+            exit 1
+          fi
+
+          # required
+          if [ -z "${SLACK_CHANNEL_ID:-}" ]; then
+            echo "Missing SLACK_CHANNEL_ID secret (channel ID, not name)."
+            exit 1
+          fi
+
+          # mention target if available
+          if [ -n "${CODEX_USER_ID:-}" ]; then
+            MENTION="<@${CODEX_USER_ID}>"
+          else
+            MENTION=""
+          fi
+
+          # fallback for empty issue body
+          BODY="${ISSUE_BODY:-No description provided.}"
+
+          # build clean JSON payload with jq to avoid shell-escaping nightmares
+          PAYLOAD=$(jq -n \
+            --arg channel "$SLACK_CHANNEL_ID" \
+            --arg mention "$MENTION" \
+            --arg title "$ISSUE_TITLE" \
+            --arg user "$ISSUE_USER" \
+            --arg body "$BODY" \
+            --arg url "$ISSUE_URL" \
             '{
-              "text": "<@U09KSTF3BNF> fix this issue:\n\n*Title:* \($title)\n*Author:* \($user)\n*URL:* \($url)\n*Description:* \($body // "No description provided")"
+              channel: $channel,
+              text: ($mention + " fix this issue: *" + $title + "*"),
+              blocks: [
+                { "type": "section", "text": { "type": "mrkdwn", "text": ($mention + " fix this issue: *" + $title + "*") } },
+                {
+                  "type": "section",
+                  "fields": [
+                    { "type": "mrkdwn", "text": "*Author:*\n" + $user },
+                    { "type": "mrkdwn", "text": "*URL:*\n<" + $url + "|" + $title + ">" }
+                  ]
+                },
+                { "type": "section", "text": { "type": "mrkdwn", "text": "*Description:*\n" + $body } }
+              ]
             }')
 
-          curl -X POST -H 'Content-type: application/json' \
-               --data "$payload" "$SLACK_WEBHOOK_URL"
+          # send the payload safely
+          echo "Sending payload to Slack..."
+          http_status=$(curl -s -o /tmp/resp.json -w "%{http_code}" \
+            -X POST "https://slack.com/api/chat.postMessage" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json; charset=utf-8" \
+            --data "$PAYLOAD")
+
+          echo "HTTP status: $http_status"
+          cat /tmp/resp.json
+
+          ok=$(jq -r '.ok // "false"' /tmp/resp.json)
+          if [ "$ok" != "true" ]; then
+            echo "Slack error:"
+            jq -r '.error' /tmp/resp.json || true
+            exit 1
+          fi
+
+          echo "Slack message sent successfully."
