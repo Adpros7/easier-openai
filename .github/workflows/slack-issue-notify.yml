@@ -1,0 +1,36 @@
+name: Notify Slack on Issue Creation
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send issue details to Slack
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          payload=$(jq -n \
+            --arg title "${{ github.event.issue.title }}" \
+            --arg user "${{ github.event.issue.user.login }}" \
+            --arg url "${{ github.event.issue.html_url }}" \
+            --arg body "${{ github.event.issue.body }}" \
+            '{
+              "text": "*New GitHub Issue Created*",
+              "attachments": [
+                {
+                  "color": "#36a64f",
+                  "fields": [
+                    {"title": "Title", "value": $title, "short": false},
+                    {"title": "Author", "value": $user, "short": true},
+                    {"title": "URL", "value": $url, "short": false},
+                    {"title": "Description", "value": ($body // "No description provided"), "short": false}
+                  ]
+                }
+              ]
+            }')
+
+          curl -X POST -H 'Content-type: application/json' \
+               --data "$payload" "$SLACK_WEBHOOK_URL"
