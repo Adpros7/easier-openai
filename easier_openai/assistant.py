@@ -12,14 +12,22 @@ import types
 import warnings
 from os import getenv
 from threading import BrokenBarrierError
-from typing import TYPE_CHECKING, Any, Generator, Literal, Mapping, Sequence, TypeAlias, Unpack
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Generator,
+    Literal,
+    Mapping,
+    Sequence,
+    TypeAlias,
+    Unpack,
+)
 
 from openai import OpenAI
 from openai.resources.vector_stores.vector_stores import VectorStores
 from openai.types.conversations.conversation import Conversation
 from openai.types.responses.response import Response
-from openai.types.responses.response_function_tool_call import \
-    ResponseFunctionToolCall
+from openai.types.responses.response_function_tool_call import ResponseFunctionToolCall
 from openai.types.shared_params import Reasoning, ResponsesModel
 from openai.types.vector_store import VectorStore
 from playsound3 import playsound
@@ -706,7 +714,11 @@ class Assistant:
             print("Error creating response: \n", e)
             print(
                 "\nLine Number : ",
-                e.__traceback__.tb_lineno if isinstance(e, types.TracebackType) else 709,
+                (
+                    e.__traceback__.tb_lineno
+                    if isinstance(e, types.TracebackType)
+                    else 709
+                ),
             )  # type: ignore
             returns_flag = False
 
