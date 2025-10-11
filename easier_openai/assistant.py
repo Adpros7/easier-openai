@@ -128,38 +128,38 @@ class Assistant:
         if not resolved_key:
             raise ValueError("No API key provided.")
 
-        self.api_key = str(resolved_key)
-        self.model = model
-        self.client = OpenAI(api_key=self.api_key)
-        self.system_prompt = system_prompt
-        self.temperature = temperature
-        self.reasoning_effort = reasoning_effort
-        self.summary_length = summary_length
-        self.reasoning: Reasoning | None = None
+        self._api_key = str(resolved_key)
+        self._model = model
+        self._client = OpenAI(api_key=self._api_key)
+        self._system_prompt = system_prompt
+        self._temperature = temperature
+        self._reasoning_effort = reasoning_effort
+        self._summary_length = summary_length
+        self._reasoning: Reasoning | None = None
 
-        self.function_call_list: list[types.FunctionType] = []
+        self._function_call_list: list[types.FunctionType] = []
 
         conversation: Conversation | None = None
         if default_conversation is True:
-            conversation = self.client.conversations.create()
+            conversation = self._client.conversations.create()
         elif isinstance(default_conversation, Conversation):
             conversation = default_conversation
 
-        self.conversation = conversation
-        self.conversation_id = getattr(conversation, "id", None)
+        self._conversation = conversation
+        self._conversation_id = getattr(conversation, "id", None)
 
-        self.stt: Any = None
+        self._stt: Any = None
         self._refresh_reasoning()
 
     def _refresh_reasoning(self) -> None:
         """Rebuild the reusable Reasoning payload from the current configuration."""
 
         reasoning_kwargs: dict[str, Any] = {}
-        if self.reasoning_effort:
-            reasoning_kwargs["effort"] = self.reasoning_effort
-        if self.summary_length:
-            reasoning_kwargs["summary"] = self.summary_length
-        self.reasoning = Reasoning(**reasoning_kwargs) if reasoning_kwargs else None
+        if self._reasoning_effort:
+            reasoning_kwargs["effort"] = self._reasoning_effort
+        if self._summary_length:
+            reasoning_kwargs["summary"] = self._summary_length
+        self._reasoning = Reasoning(**reasoning_kwargs) if reasoning_kwargs else None
 
     def _convert_filepath_to_vector(
         self, list_of_files: list[str]
@@ -193,12 +193,12 @@ class Assistant:
             if not os.path.exists(filepath):
                 raise FileNotFoundError(f"File not found: {filepath}")
 
-        vector_store_create = self.client.vector_stores.create(name="vector_store")
-        vector_store = self.client.vector_stores.retrieve(vector_store_create.id)
-        vector = self.client.vector_stores
+        vector_store_create = self._client.vector_stores.create(name="vector_store")
+        vector_store = self._client.vector_stores.retrieve(vector_store_create.id)
+        vector = self._client.vector_stores
         for filepath in list_of_files:
             with open(filepath, "rb") as f:
-                self.client.vector_stores.files.upload_and_poll(
+                self._client.vector_stores.files.upload_and_poll(
                     vector_store_id=vector_store_create.id, file=f
                 )
         return vector_store_create, vector_store, vector
@@ -431,7 +431,7 @@ class Assistant:
             else None
         )
 
-        response = self.client.responses.create(**request_params)
+        response = self._client.responses.create(**request_params)
 
         while tool_map:
             tool_calls = self._gather_function_calls(response)
@@ -453,7 +453,7 @@ class Assistant:
                 history_input.extend(tool_outputs)
                 request_params["input"] = history_input
 
-            response = self.client.responses.create(**request_params)
+            response = self._client.responses.create(**request_params)
 
         return response
 
@@ -476,7 +476,7 @@ class Assistant:
             if not conversation_id:
                 request_params["input"] = history_input
 
-            with self.client.responses.stream(**request_params) as streamer:
+            with self._client.responses.stream(**request_params) as streamer:
                 for event in streamer:
                     if event.type == "response.output_text.delta":
                         yield event.delta
@@ -523,7 +523,7 @@ class Assistant:
         Note:
             This helper is primarily used internally when ``text_stream=True`` is passed to ``chat``.
         """
-        with self.client.responses.stream(**params_for_response) as streamer:
+        with self._client.responses.stream(**params_for_response) as streamer:
             for event in streamer:
                 if event.type == "response.output_text.delta":
                     yield event.delta
@@ -590,13 +590,13 @@ class Assistant:
             'Paris ...'
 
         Note:
-            `custom_tools` and `self.function_call_list` are merged, deduplicated by schema name,
+            `custom_tools` and `self._function_call_list` are merged, deduplicated by schema name,
             and automatically executed until every tool call is satisfied.
         """
 
         conversation_ref: str | None
         if conv_id is True:
-            conversation_ref = self.conversation_id
+            conversation_ref = self._conversation_id
         elif isinstance(conv_id, Conversation):
             conversation_ref = getattr(conv_id, "id", None)
         elif conv_id in (False, None):
@@ -635,12 +635,12 @@ class Assistant:
                     "content": user_content,
                 }
             ],
-            "instructions": self.system_prompt or None,
+            "instructions": self._system_prompt or None,
             "conversation": conversation_ref,
             "max_output_tokens": max_output_tokens,
             "store": store,
-            "model": self.model,
-            "reasoning": self.reasoning,
+            "model": self._model,
+            "reasoning": self._reasoning,
             "tools": [],
             "stream": stream,
         }
@@ -677,7 +677,7 @@ class Assistant:
         if tools_required != "auto":
             params_for_response["tool_choice"] = tools_required
 
-        builtin_tools = list(self.function_call_list)
+        builtin_tools = list(self._function_call_list)
         user_tools = list(custom_tools) if custom_tools else []
         combined_tools = builtin_tools + user_tools
         if combined_tools:
@@ -719,7 +719,7 @@ class Assistant:
                 )
 
             if store and returns_flag and resp is not None:
-                self.conversation = resp.conversation
+                self._conversation = resp.conversation
 
             if vector_bundle:
                 vector_bundle[2].delete(vector_bundle[0].id)
@@ -751,7 +751,7 @@ class Assistant:
             Reuse the returned conversation ID to continue multi-turn exchanges.
         """
 
-        conversation = self.client.conversations.create()
+        conversation = self._client.conversations.create()
         if return_id_only:
             return conversation.id
         return conversation
@@ -857,7 +857,7 @@ class Assistant:
         clean_params = {k: v for k, v in params.items() if v is not None}
 
         try:
-            img = self.client.images.generate(**clean_params)
+            img = self._client.images.generate(**clean_params)
 
         except Exception as e:
             raise e
@@ -990,7 +990,7 @@ class Assistant:
             "speed": speed,
         }
 
-        respo = self.client.audio.speech.create(**params)
+        respo = self._client.audio.speech.create(**params)
 
         if save_to_file_path:
             respo.write_to_file(str(save_to_file_path))
@@ -1094,7 +1094,7 @@ class Assistant:
             "tools_required": tools_required,
         }
 
-        resp = self.chat(**param)
+        resp = self._chat(**param)
 
         say_params = {
             "model": model,
@@ -1109,7 +1109,7 @@ class Assistant:
 
         if print_response:
             print(resp)
-        self.text_to_speech(**say_params)
+        self._text_to_speech(**say_params)
 
         return resp  # type: ignore
 
@@ -1165,14 +1165,14 @@ class Assistant:
         wait_until(not STT_LOADER.poll() is None)
         import openai_stt as stt
 
-        if self.stt == None:
+        if self._stt == None:
             stt_model = stt.STT(
                 model=model, aggressive=aggressive, chunk_duration_ms=chunk_duration_ms
             )
-            self.stt = stt_model
+            self._stt = stt_model
 
         else:
-            stt_model = self.stt
+            stt_model = self._stt
 
         if mode == "keyboard":
             result = stt_model.record_with_keyboard(log=log_directions, key=key)
@@ -1258,4 +1258,3 @@ if __name__ == "__main__":
             break
         else:
             print(response)
-
