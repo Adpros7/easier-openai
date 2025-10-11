@@ -1,4 +1,4 @@
-name: Notify Slack on Issue Creation
+name: Notify Codex on Issue Creation
 
 on:
   issues:
@@ -13,15 +13,15 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
           payload=$(jq -n \
-            --arg title "${{ github.event.issue.title }}" \
             --arg user "${{ github.event.issue.user.login }}" \
-            --arg url "${{ github.event.issue.html_url }}" \
+            --arg title "${{ github.event.issue.title }}" \
             --arg body "${{ github.event.issue.body }}" \
+            --arg url "${{ github.event.issue.html_url }}" \
             '{
-              "text": "*New GitHub Issue Created*",
+              "text": "@codex fix this issue:",
               "attachments": [
                 {
-                  "color": "#36a64f",
+                  "color": "#ff4500",
                   "fields": [
                     {"title": "Title", "value": $title, "short": false},
                     {"title": "Author", "value": $user, "short": true},
