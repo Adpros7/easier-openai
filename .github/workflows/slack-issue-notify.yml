@@ -18,7 +18,7 @@ jobs:
             --arg body "${{ github.event.issue.body }}" \
             --arg url "${{ github.event.issue.html_url }}" \
             '{
-              "text": "@codex fix this issue:",
+              "text": "@Codex fix this issue:",
               "attachments": [
                 {
                   "color": "#ff4500",
