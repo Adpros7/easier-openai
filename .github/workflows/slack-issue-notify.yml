@@ -18,18 +18,7 @@ jobs:
             --arg body "${{ github.event.issue.body }}" \
             --arg url "${{ github.event.issue.html_url }}" \
             '{
-              "text": "@Codex fix this issue:",
-              "attachments": [
-                {
-                  "color": "#ff4500",
-                  "fields": [
-                    {"title": "Title", "value": $title, "short": false},
-                    {"title": "Author", "value": $user, "short": true},
-                    {"title": "URL", "value": $url, "short": false},
-                    {"title": "Description", "value": ($body // "No description provided"), "short": false}
-                  ]
-                }
-              ]
+              "text": "@Codex fix this issue:\n\n*Title:* \($title)\n*Author:* \($user)\n*URL:* \($url)\n*Description:* \($body // "No description provided")"
             }')
 
           curl -X POST -H 'Content-type: application/json' \
