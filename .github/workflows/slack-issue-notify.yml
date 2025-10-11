@@ -18,7 +18,7 @@ jobs:
             --arg body "${{ github.event.issue.body }}" \
             --arg url "${{ github.event.issue.html_url }}" \
             '{
-              "text": "@Codex fix this issue:\n\n*Title:* \($title)\n*Author:* \($user)\n*URL:* \($url)\n*Description:* \($body // "No description provided")"
+              "text": "<@U09KSTF3BNF> fix this issue:\n\n*Title:* \($title)\n*Author:* \($user)\n*URL:* \($url)\n*Description:* \($body // "No description provided")"
             }')
 
           curl -X POST -H 'Content-type: application/json' \
