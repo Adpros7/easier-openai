@@ -1,5 +1,5 @@
-# .github/workflows/auto-codex-pr.yml
-name: Auto PR for codex branches
+# .github/workflows/auto-codex-pr-no-close.yml
+name: Auto PR for codex branches (no auto-close)
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   pull-requests: write
 
 jobs:
-  create_pr:
+  ensure_pr:
     runs-on: ubuntu-latest
 
     steps:
@@ -20,12 +20,34 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Create or update Pull Request
-        uses: peter-evans/create-pull-request@v7
+      - name: Create PR if none exists
+        uses: actions/github-script@v7
         with:
-          branch: ${{ github.ref_name }}
-          base: main
-          title: "[codex] Auto PR from ${{ github.ref_name }}"
-          body: |
-            Auto-generated PR from branch `${{ github.ref_name }}`
-          token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo;
+            // branch name like "codex/xyz"
+            const headBranch = context.ref.replace('refs/heads/', '');
+            const baseBranch = 'main';  // change this if your default is not 'main'
+
+            // List PRs with this head → base
+            const existing = await github.rest.pulls.list({
+              owner,
+              repo,
+              head: `${owner}:${headBranch}`,
+              base: baseBranch,
+              state: 'open'
+            });
+
+            if (existing.data.length > 0) {
+              console.log(`PR already exists for ${headBranch}, skipping creation.`);
+            } else {
+              console.log(`No PR exists for ${headBranch}, creating one.`);
+              await github.rest.pulls.create({
+                owner,
+                repo,
+                head: headBranch,
+                base: baseBranch,
+                title: `[codex] Auto PR from ${headBranch}`,
+                body: `Auto-generated PR from branch **${headBranch}**`
+              });
+            }
