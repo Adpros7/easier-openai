@@ -14,6 +14,7 @@ from os import getenv
 from threading import BrokenBarrierError
 from typing import (TYPE_CHECKING, Any, Generator, Literal, Mapping, Sequence,
                     TypeAlias, Unpack)
+from urllib.parse import urlparse
 
 from openai import OpenAI
 from openai.resources.vector_stores.vector_stores import VectorStores
@@ -549,6 +550,7 @@ class Assistant:
         store: bool = False,
         web_search: bool = False,
         code_interpreter: bool = False,
+        mcp_servers: Sequence[str] | None = None,
         file_search: Sequence[str] | None = None,
         file_search_max_searches: int | None = None,
         tools_required: Literal["none", "auto", "required"] = "auto",
@@ -571,6 +573,7 @@ class Assistant:
             store: Persist the response to OpenAI's conversation store when ``True``.
             web_search: Include the web search tool in the toolset.
             code_interpreter: Include the code interpreter tool in the toolset.
+            mcp_servers: Sequence of MCP server URLs to expose to the model.
             file_search: Iterable of local file paths that should be uploaded and searched
                 against for retrieval-augmented responses.
             file_search_max_searches: Optional maximum search passes for the file-search tool.
@@ -663,6 +666,22 @@ class Assistant:
             params_for_response["tools"].append(
                 {"type": "code_interpreter", "container": {"type": "auto"}}
             )
+
+        if mcp_servers:
+            for idx, server_url in enumerate(mcp_servers, start=1):
+                if not server_url:
+                    continue
+                parsed = urlparse(server_url)
+                server_label = (
+                    parsed.netloc or parsed.path.strip("/") or f"mcp_{idx}"
+                )
+                params_for_response["tools"].append(
+                    {
+                        "type": "mcp",
+                        "server_url": server_url,
+                        "server_label": server_label,
+                    }
+                )
 
         vector_bundle: tuple[VectorStore,
                              VectorStore, VectorStores] | None = None
