@@ -45,6 +45,26 @@ VadAgressiveness: TypeAlias = Literal[1, 2, 3]
 Number: TypeAlias = int | float
 
 
+SttModelName: TypeAlias = Literal[
+    "tiny.en",
+    "tiny",
+    "base.en",
+    "base",
+    "small.en",
+    "small",
+    "medium.en",
+    "medium",
+    "large-v1",
+    "large-v2",
+    "large-v3",
+    "large",
+    "large-v3-turbo",
+    "turbo",
+    "gpt-4o-transcribe",
+    "gpt-4o-mini-transcribe",
+]
+
+
 if TYPE_CHECKING:
     from .Images import Openai_Images
 
@@ -98,6 +118,7 @@ class Assistant:
         reasoning_effort: Literal["minimal",
                                   "low", "medium", "high"] | None = None,
         summary_length: Literal["auto", "concise", "detailed"] | None = None,
+        stt_model: SttModelName = "base",
     ):
         """Initialise the assistant client and, optionally, a default conversation.
 
@@ -113,6 +134,8 @@ class Assistant:
             temperature: Optional sampling temperature forwarded to the OpenAI API.
             reasoning_effort: Optional reasoning effort hint for models that support it.
             summary_length: Optional reasoning summary length hint for compatible models.
+            stt_model: Default speech-to-text model identifier reused across invocations
+                of `speech_to_text` unless overridden.
 
         Raises:
             ValueError: If neither ``api_key`` nor ``OPENAI_API_KEY`` is provided.
@@ -141,6 +164,8 @@ class Assistant:
         self._reasoning_effort = reasoning_effort
         self._summary_length = summary_length
         self._reasoning: Reasoning | None = None
+        self._stt_model: SttModelName = stt_model
+        self.stt_model = stt_model
 
         self._function_call_list: list[types.FunctionType] = []
 
@@ -154,6 +179,7 @@ class Assistant:
         self._conversation_id = getattr(conversation, "id", None)
 
         self._stt: Any = None
+        self._loaded_stt_model: SttModelName | None = None
         self._refresh_reasoning()
 
     def _refresh_reasoning(self) -> None:
@@ -906,6 +932,7 @@ class Assistant:
             "reasoning_effort",
             "summary_length",
             "function_call_list",
+            "stt_model",
         ],
         new_value,
     ):
@@ -938,6 +965,7 @@ class Assistant:
             "reasoning_effort": "reasoning_effort",
             "summary_length": "summary_length",
             "function_call_list": "function_call_list",
+            "stt_model": "_stt_model",
         }
 
         try:
@@ -949,6 +977,9 @@ class Assistant:
 
         if attribute_name in {"reasoning_effort", "summary_length"}:
             self._refresh_reasoning()
+        elif attribute_name == "_stt_model":
+            setattr(self, "stt_model", new_value)
+            self._loaded_stt_model = None
 
     def text_to_speech(
         self,
@@ -1142,24 +1173,7 @@ class Assistant:
     def speech_to_text(
         self,
         mode: Literal["vad", "keyboard"] | Seconds = "vad",
-        model: Literal[
-            "tiny.en",
-            "tiny",
-            "base.en",
-            "base",
-            "small.en",
-            "small",
-            "medium.en",
-            "medium",
-            "large-v1",
-            "large-v2",
-            "large-v3",
-            "large",
-            "large-v3-turbo",
-            "turbo",
-            "gpt-4o-transcribe",
-            "gpt-4o-mini-transcribe",
-        ] = "base",
+        model: SttModelName | None = None,
         aggressive: VadAgressiveness = 2,
         chunk_duration_ms: int = 30,
         log_directions: bool = False,
@@ -1170,7 +1184,7 @@ class Assistant:
         Args:
             mode: Recording strategy; ``"vad"`` records until silence, ``"keyboard"``
                 toggles with a hotkey, or a numeric value records for that many seconds.
-            model: Whisper or OpenAI speech model identifier.
+            model: Optional override for the configured speech-to-text model.
             aggressive: Voice activity detection aggressiveness when using VAD.
             chunk_duration_ms: Frame size for VAD processing in milliseconds.
             log_directions: Whether to print instructions to the console.
@@ -1191,11 +1205,16 @@ class Assistant:
         wait_until(not STT_LOADER.poll() is None)
         import openai_stt as stt
 
-        if self._stt == None:
+        selected_model = model or self._stt_model
+
+        if self._stt is None or self._loaded_stt_model != selected_model:
             stt_model = stt.STT(
-                model=model, aggressive=aggressive, chunk_duration_ms=chunk_duration_ms
+                model=selected_model,
+                aggressive=aggressive,
+                chunk_duration_ms=chunk_duration_ms,
             )
             self._stt = stt_model
+            self._loaded_stt_model = selected_model
 
         else:
             stt_model = self._stt
@@ -1218,7 +1237,7 @@ class Assistant:
             >>> from typing import get_type_hints
             >>> hints = get_type_hints(Assistant.__mass_update_helper)
             >>> sorted(hints.keys())
-            ['function_call_list', 'model', 'reasoning_effort', 'summary_length', 'system_prompt', 'temperature']
+            ['function_call_list', 'model', 'reasoning_effort', 'stt_model', 'summary_length', 'system_prompt', 'temperature']
 
         Note:
             The helper is intended for type checkers and IDEs; you rarely need to instantiate it directly.
@@ -1252,7 +1271,10 @@ class Assistant:
         field_map = {"tts_model": "_tts_model"}
 
         for key, value in __mass_update_helper.items():
-            setattr(self, field_map.get(key, key), value)
+            if key == "stt_model":
+                self._stt_model = value
+                self._loaded_stt_model = None
+            setattr(self, key, value)
         if {"reasoning_effort", "summary_length"} & set(__mass_update_helper):
             self._refresh_reasoning()
 
