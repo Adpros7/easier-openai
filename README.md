@@ -108,7 +108,10 @@ image_client = Openai_Images("samples/promenade.jpg")
 ```
 
 ## Configuration Reference
-- `model`: Default model used for chat, tool calls, and reasoning workflows.
+- `model`: Default model used for chat, tool calls, and reasoning workflows. Choosing a realtime
+  model (for example `gpt-4o-realtime-preview`) automatically routes `Assistant.chat` through the
+  Realtime API for text-only prompts; install `openai[realtime]` to satisfy its websocket dependency.
+  Tool execution and the `stream` flag are ignored while a realtime model is active.
 - `system_prompt`: Injected once per conversation to shape assistant behaviour.
 - `reasoning_effort` and `summary_length`: Fine tune reasoning models via the official API semantics.
 - `temperature`: Pass through value mapped to OpenAI responses for deterministic vs creative answers.
