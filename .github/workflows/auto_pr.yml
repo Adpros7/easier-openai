@@ -1,5 +1,5 @@
-# .github/workflows/auto-codex-pr-no-close.yml
-name: Auto PR for codex branches (no auto-close)
+# .github/workflows/auto-codex-pr-safe.yml
+name: Auto PR for codex branches (safe, no force-push)
 
 on:
   push:
@@ -11,43 +11,55 @@ permissions:
   pull-requests: write
 
 jobs:
-  ensure_pr:
+  safe_pr:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Create PR if none exists
+      - name: Check for diff
+        id: has_diff
+        run: |
+          # Compare this branch vs base (main)
+          git fetch origin main
+          # See if there is any diff
+          DIFF=$(git diff --quiet origin/main...HEAD || echo "DIFF")
+          if [ -z "$DIFF" ]; then
+            echo "no_diff=true" >> $GITHUB_OUTPUT
+          else
+            echo "no_diff=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create PR if diff and none exists
+        if: steps.has_diff.outputs.no_diff == 'false'
         uses: actions/github-script@v7
         with:
           script: |
             const { owner, repo } = context.repo;
-            // branch name like "codex/xyz"
-            const headBranch = context.ref.replace('refs/heads/', '');
-            const baseBranch = 'main';  // change this if your default is not 'main'
+            const head = context.ref.replace('refs/heads/', '');
+            const base = 'main';  // change if your main branch name is different
 
-            // List PRs with this head → base
+            // check existing open PRs
             const existing = await github.rest.pulls.list({
               owner,
               repo,
-              head: `${owner}:${headBranch}`,
-              base: baseBranch,
+              head: `${owner}:${head}`,
+              base,
               state: 'open'
             });
-
             if (existing.data.length > 0) {
-              console.log(`PR already exists for ${headBranch}, skipping creation.`);
+              console.log(`PR already exists for ${head}. Doing nothing.`);
             } else {
-              console.log(`No PR exists for ${headBranch}, creating one.`);
+              console.log(`Creating PR from ${head} → ${base}.`);
               await github.rest.pulls.create({
                 owner,
                 repo,
-                head: headBranch,
-                base: baseBranch,
-                title: `[codex] Auto PR from ${headBranch}`,
-                body: `Auto-generated PR from branch **${headBranch}**`
+                head,
+                base,
+                title: `[codex] Auto PR from ${head}`,
+                body: `Auto-generated PR from branch **${head}**`
               });
             }
