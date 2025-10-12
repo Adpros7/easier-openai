@@ -12,22 +12,15 @@ import types
 import warnings
 from os import getenv
 from threading import BrokenBarrierError
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Generator,
-    Literal,
-    Mapping,
-    Sequence,
-    TypeAlias,
-    Unpack,
-)
+from typing import (TYPE_CHECKING, Any, Generator, Literal, Mapping, Sequence,
+                    TypeAlias, Unpack)
 
 from openai import OpenAI
 from openai.resources.vector_stores.vector_stores import VectorStores
 from openai.types.conversations.conversation import Conversation
 from openai.types.responses.response import Response
-from openai.types.responses.response_function_tool_call import ResponseFunctionToolCall
+from openai.types.responses.response_function_tool_call import \
+    ResponseFunctionToolCall
 from openai.types.shared_params import Reasoning, ResponsesModel
 from openai.types.vector_store import VectorStore
 from playsound3 import playsound
@@ -101,7 +94,8 @@ class Assistant:
         system_prompt: str = "",
         default_conversation: Conversation | bool = True,
         temperature: float | None = None,
-        reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = None,
+        reasoning_effort: Literal["minimal",
+                                  "low", "medium", "high"] | None = None,
         summary_length: Literal["auto", "concise", "detailed"] | None = None,
     ):
         """Initialise the assistant client and, optionally, a default conversation.
@@ -167,7 +161,8 @@ class Assistant:
             reasoning_kwargs["effort"] = self._reasoning_effort
         if self._summary_length:
             reasoning_kwargs["summary"] = self._summary_length
-        self._reasoning = Reasoning(**reasoning_kwargs) if reasoning_kwargs else None
+        self._reasoning = Reasoning(
+            **reasoning_kwargs) if reasoning_kwargs else None
 
     def _convert_filepath_to_vector(
         self, list_of_files: list[str]
@@ -196,13 +191,16 @@ class Assistant:
             The helper uploads synchronously; large files may take several seconds to index.
         """
         if not isinstance(list_of_files, list) or len(list_of_files) == 0:
-            raise ValueError("list_of_files must be a non-empty list of file paths.")
+            raise ValueError(
+                "list_of_files must be a non-empty list of file paths.")
         for filepath in list_of_files:
             if not os.path.exists(filepath):
                 raise FileNotFoundError(f"File not found: {filepath}")
 
-        vector_store_create = self._client.vector_stores.create(name="vector_store")
-        vector_store = self._client.vector_stores.retrieve(vector_store_create.id)
+        vector_store_create = self._client.vector_stores.create(
+            name="vector_store")
+        vector_store = self._client.vector_stores.retrieve(
+            vector_store_create.id)
         vector = self._client.vector_stores
         for filepath in list_of_files:
             with open(filepath, "rb") as f:
@@ -314,7 +312,8 @@ class Assistant:
         schema = {
             "type": "function",
             "name": func.__name__,
-            "description": description or doc.strip().split("\n")[0],  # type: ignore
+            # type: ignore
+            "description": description or doc.strip().split("\n")[0],
             "parameters": {
                 "type": "object",
                 "properties": properties,
@@ -634,7 +633,8 @@ class Assistant:
                     if image.type != "Base64"
                     else f"data:image/{image.image[2]}; base64, {image.image[0]}"
                 )
-                user_content.append({"type": "input_image", payload_key: payload_value})
+                user_content.append(
+                    {"type": "input_image", payload_key: payload_value})
 
         params_for_response: dict[str, Any] = {
             "input": [
@@ -661,7 +661,8 @@ class Assistant:
                 {"type": "code_interpreter", "container": {"type": "auto"}}
             )
 
-        vector_bundle: tuple[VectorStore, VectorStore, VectorStores] | None = None
+        vector_bundle: tuple[VectorStore,
+                             VectorStore, VectorStores] | None = None
         if file_search:
             vector_bundle = self._convert_filepath_to_vector(list(file_search))
             params_for_response["tools"].append(
@@ -706,9 +707,11 @@ class Assistant:
                 request_params["tools"] = list(request_params["tools"])
 
             if text_stream:
-                stream_gen = self._function_call_stream(request_params, tool_map)
+                stream_gen = self._function_call_stream(
+                    request_params, tool_map)
             else:
-                resp = self._resolve_response_with_tools(request_params, tool_map)
+                resp = self._resolve_response_with_tools(
+                    request_params, tool_map)
 
         except Exception as e:
             print("Error creating response: \n", e)
@@ -963,7 +966,8 @@ class Assistant:
             ]
         ) = "alloy",
         instructions: str = "NOT_GIVEN",
-        response_format: Literal["mp3", "opus", "aac", "flac", "wav", "pcm"] = "wav",
+        response_format: Literal["mp3", "opus",
+                                 "aac", "flac", "wav", "pcm"] = "wav",
         speed: float = 1,
         play: bool = True,
         play_in_background: bool = False,
@@ -1007,7 +1011,8 @@ class Assistant:
         if save_to_file_path:
             respo.write_to_file(str(save_to_file_path))
             if play:
-                sound = playsound(str(save_to_file_path), block=play_in_background)
+                sound = playsound(str(save_to_file_path),
+                                  block=play_in_background)
                 while sound.is_alive():
                     pass
 
@@ -1055,7 +1060,8 @@ class Assistant:
             ]
         ) = "alloy",
         instructions: str = "NOT_GIVEN",
-        response_format: Literal["mp3", "opus", "aac", "flac", "wav", "pcm"] = "wav",
+        response_format: Literal["mp3", "opus",
+                                 "aac", "flac", "wav", "pcm"] = "wav",
         speed: float = 1,
         play: bool = True,
         print_response: bool = False,
@@ -1187,7 +1193,8 @@ class Assistant:
             stt_model = self._stt
 
         if mode == "keyboard":
-            result = stt_model.record_with_keyboard(log=log_directions, key=key)
+            result = stt_model.record_with_keyboard(
+                log=log_directions, key=key)
         elif mode == "vad":
             result = stt_model.record_with_vad(log=log_directions)
 
@@ -1269,4 +1276,4 @@ if __name__ == "__main__":
         if response == "done":
             break
         else:
-            print(response)
+            print(response, end="")
