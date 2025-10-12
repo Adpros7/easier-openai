@@ -24,7 +24,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          branch_name="${GITHUB_REF##*/}"
+          branch_name="${GITHUB_REF#refs/heads/}"
           base_branch="main"
 
           echo "Creating PR from $branch_name to $base_branch"
