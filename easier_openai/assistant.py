@@ -65,6 +65,27 @@ SttModelName: TypeAlias = Literal[
     "gpt-4o-mini-transcribe",
 ]
 
+REALTIME_MODEL_VALUES: tuple[str, ...] = (
+    "gpt-realtime",
+    "gpt-realtime-2025-08-28",
+    "gpt-4o-realtime-preview",
+    "gpt-4o-realtime-preview-2024-10-01",
+    "gpt-4o-realtime-preview-2024-12-17",
+    "gpt-4o-realtime-preview-2025-06-03",
+    "gpt-4o-mini-realtime-preview",
+    "gpt-4o-mini-realtime-preview-2024-12-17",
+    "gpt-realtime-mini",
+    "gpt-realtime-mini-2025-10-06",
+    "gpt-audio-mini",
+    "gpt-audio-mini-2025-10-06",
+)
+
+REALTIME_MODELS: frozenset[str] = frozenset(REALTIME_MODEL_VALUES)
+
+RealtimeModelName: TypeAlias = Literal[*REALTIME_MODEL_VALUES]
+
+AssistantModelName: TypeAlias = ResponsesModel | RealtimeModelName
+
 
 if TYPE_CHECKING:
     from .Images import Openai_Images
@@ -111,7 +132,7 @@ class Assistant:
     def __init__(
         self,
         api_key: str | None = None,
-        model: ResponsesModel = "chatgpt-4o-latest",
+        model: AssistantModelName = "chatgpt-4o-latest",
         tts_model: Literal["tts-1", "tts-1-hd", "gpt-4o-mini-tts"] = "tts-1",
         system_prompt: str = "",
         default_conversation: Conversation | bool = True,
@@ -126,7 +147,9 @@ class Assistant:
         Args:
             api_key: Explicit OpenAI API key. When omitted the ``OPENAI_API_KEY`` environment
                 variable must be set.
-            model: Default Responses API model identifier to use for `chat` requests.
+            model: Default model identifier used for `chat` requests. When set to a realtime
+                model (e.g. ``\"gpt-4o-realtime-preview\"``) the Realtime API is used instead of
+                the standard Responses API.
             tts_model: Default text-to-speech model identifier used by audio helpers.
             system_prompt: System instructions prepended to every conversation turn.
             default_conversation: Pass ``True`` to create a fresh server-side conversation,
@@ -149,7 +172,9 @@ class Assistant:
         Note:
             When either ``reasoning_effort`` or ``summary_length`` is supplied the assistant
             constructs a reusable `Reasoning` payload that is automatically applied to every
-            `chat` call.
+            `chat` call. Selecting a realtime model switches the `chat` method to the
+            Realtime API automatically, supporting text prompts (with optional ``text_stream``)
+            only.
         """
 
         resolved_key = api_key or getenv("OPENAI_API_KEY")
@@ -157,7 +182,7 @@ class Assistant:
             raise ValueError("No API key provided.")
 
         self._api_key = str(resolved_key)
-        self._model = model
+        self._use_realtime: bool = False
         self._tts_model = tts_model
         self._client = OpenAI(api_key=self._api_key)
         self._system_prompt = system_prompt
@@ -167,6 +192,7 @@ class Assistant:
         self._reasoning: Reasoning | None = None
         self._stt_model: SttModelName = stt_model
         self.stt_model = stt_model
+        self._set_model(model)
 
         self._function_call_list: list[types.FunctionType] = []
 
@@ -193,6 +219,12 @@ class Assistant:
             reasoning_kwargs["summary"] = self._summary_length
         self._reasoning = Reasoning(
             **reasoning_kwargs) if reasoning_kwargs else None
+
+    def _set_model(self, model: AssistantModelName) -> None:
+        """Assign the default model and derive realtime capabilities."""
+
+        self._model = model
+        self._use_realtime = str(model) in REALTIME_MODELS
 
     def _convert_filepath_to_vector(
         self, list_of_files: list[str]
@@ -567,6 +599,99 @@ class Assistant:
                 elif event.type == "response.completed":
                     yield "done"
 
+    def _realtime_text_completion(
+        self,
+        *,
+        session_payload: dict[str, Any],
+        response_payload: dict[str, Any],
+    ) -> str:
+        """Send a single realtime text request and return the aggregated output."""
+
+        text_chunks: list[str] = []
+        final_text: str | None = None
+        with self._client.realtime.connect(model=str(self._model)) as connection:
+            connection.session.update(session=session_payload)
+            connection.response.create(response=response_payload)
+
+            while True:
+                event = connection.recv()
+                event_type = getattr(event, "type", None)
+
+                if event_type == "response.output_text.delta":
+                    text_chunks.append(event.delta)
+                elif event_type == "response.output_text.done":
+                    final_text = event.text
+                elif event_type == "response.done":
+                    break
+                elif event_type == "error":
+                    raise RuntimeError(f"Realtime API error: {event.error.message}")
+
+        return final_text or "".join(text_chunks)
+
+    def _realtime_text_stream(
+        self,
+        *,
+        session_payload: dict[str, Any],
+        response_payload: dict[str, Any],
+    ) -> Generator[str, Any, None]:
+        """Yield text deltas from the realtime API followed by a ``\"done\"`` sentinel."""
+
+        def generator() -> Generator[str, Any, None]:
+            with self._client.realtime.connect(model=str(self._model)) as connection:
+                connection.session.update(session=session_payload)
+                connection.response.create(response=response_payload)
+
+                while True:
+                    event = connection.recv()
+                    event_type = getattr(event, "type", None)
+
+                    if event_type == "response.output_text.delta":
+                        yield event.delta
+                    elif event_type == "response.done":
+                        yield "done"
+                        break
+                    elif event_type == "error":
+                        raise RuntimeError(
+                            f"Realtime API error: {event.error.message}"
+                        )
+
+        return generator()
+
+    def _build_realtime_payloads(
+        self,
+        *,
+        user_content: list[dict[str, Any]],
+        max_output_tokens: int | None,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Prepare session and response payloads for realtime requests."""
+
+        model_name = str(self._model)
+        session_payload: dict[str, Any] = {
+            "type": "realtime",
+            "model": model_name,
+            "output_modalities": ["text"],
+        }
+        response_payload: dict[str, Any] = {
+            "output_modalities": ["text"],
+            "input": [
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": user_content,
+                }
+            ],
+        }
+
+        if self._system_prompt:
+            session_payload["instructions"] = self._system_prompt
+            response_payload["instructions"] = self._system_prompt
+
+        if max_output_tokens is not None:
+            session_payload["max_output_tokens"] = max_output_tokens
+            response_payload["max_output_tokens"] = max_output_tokens
+
+        return session_payload, response_payload
+
     def chat(
         self,
         input: str,
@@ -631,6 +756,10 @@ class Assistant:
         Note:
             `custom_tools` and `self._function_call_list` are merged, deduplicated by schema name,
             and automatically executed until every tool call is satisfied.
+            When a realtime model is active the call is routed through the Realtime API instead
+            of the Responses API; only text prompts are supported in that mode and options such as
+            ``stream`` or tool execution are unavailable. Install ``openai[realtime]`` to satisfy
+            the websocket dependency needed for realtime calls.
         """
 
         conversation_ref: str | None
@@ -667,6 +796,50 @@ class Assistant:
                 )
                 user_content.append(
                     {"type": "input_image", payload_key: payload_value})
+
+        if self._use_realtime:
+            unsupported: list[str] = []
+            if images:
+                unsupported.append("images")
+            if store:
+                unsupported.append("store")
+            if web_search:
+                unsupported.append("web_search")
+            if code_interpreter:
+                unsupported.append("code_interpreter")
+            if mcp_servers:
+                unsupported.append("mcp_servers")
+            if file_search:
+                unsupported.append("file_search")
+            if custom_tools:
+                unsupported.append("custom_tools")
+            if self._function_call_list:
+                unsupported.append("function_call_list")
+            if tools_required != "auto":
+                unsupported.append("tools_required")
+            if stream:
+                unsupported.append("stream")
+            if return_full_response:
+                unsupported.append("return_full_response")
+            if unsupported:
+                opts = ", ".join(unsupported)
+                raise ValueError(
+                    f"Realtime chat supports text prompts only; remove unsupported options: {opts}."
+                )
+
+            session_payload, response_payload = self._build_realtime_payloads(
+                user_content=user_content,
+                max_output_tokens=max_output_tokens,
+            )
+            if text_stream:
+                return self._realtime_text_stream(
+                    session_payload=session_payload,
+                    response_payload=response_payload,
+                )
+            return self._realtime_text_completion(
+                session_payload=session_payload,
+                response_payload=response_payload,
+            )
 
         params_for_response: dict[str, Any] = {
             "input": [
@@ -975,9 +1148,10 @@ class Assistant:
             `Reasoning` helper automatically. When assigning ``function_call_list`` provide
             callables decorated via `Assistant.openai_function`.
         """
-
+        if what_to_change == "model":
+            self._set_model(new_value)
+            return
         field_map = {
-            "model": "model",
             "tts_model": "_tts_model",
             "system_prompt": "system_prompt",
             "temperature": "temperature",
@@ -1262,7 +1436,7 @@ class Assistant:
             The helper is intended for type checkers and IDEs; you rarely need to instantiate it directly.
         """
 
-        model: ResponsesModel
+        model: AssistantModelName
         system_prompt: str
         temperature: float
         reasoning_effort: Literal["minimal", "low", "medium", "high"]
@@ -1286,14 +1460,19 @@ class Assistant:
         Note:
             Any provided keys are applied directly to instance attributes without additional validation.
             Updates to ``reasoning_effort`` or ``summary_length`` automatically rebuild the cached reasoning payload.
+            Updating ``model`` will also refresh the realtime detection flag used by `chat`.
         """
         field_map = {"tts_model": "_tts_model"}
 
         for key, value in __mass_update_helper.items():
+            if key == "model":
+                self._set_model(value)
+                continue
             if key == "stt_model":
                 self._stt_model = value
                 self._loaded_stt_model = None
-            setattr(self, key, value)
+            target = field_map.get(key, key)
+            setattr(self, target, value)
         if {"reasoning_effort", "summary_length"} & set(__mass_update_helper):
             self._refresh_reasoning()
 
