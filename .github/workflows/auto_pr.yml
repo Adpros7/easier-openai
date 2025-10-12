@@ -1,3 +1,4 @@
+# .github/workflows/auto-codex-pr.yml
 name: Auto PR for codex branches
 
 on:
@@ -14,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -26,5 +27,5 @@ jobs:
           base: main
           title: "[codex] Auto PR from ${{ github.ref_name }}"
           body: |
-            Auto-generated PR from branch `${{ github.ref_name }}`  
+            Auto-generated PR from branch `${{ github.ref_name }}`
           token: ${{ secrets.GITHUB_TOKEN }}
