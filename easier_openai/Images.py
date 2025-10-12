@@ -96,6 +96,6 @@ class Openai_Images(Assistant):
 
             if self.type == "filepath":
                 with open(self.image[0], "rb") as f:
-                    file = self.client.files.create(file=f, purpose="vision")
+                    file = self._client.files.create(file=f, purpose="vision")
 
                 self.image[2] = file.id
