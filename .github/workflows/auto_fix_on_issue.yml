@@ -19,6 +19,7 @@ jobs:
       ISSUE_BODY: ${{ github.event.issue.body }}
       ISSUE_URL: ${{ github.event.issue.html_url }}
       ISSUE_USER: ${{ github.event.issue.user.login }}
+
     steps:
       - name: Check OpenAI API Key
         run: |
@@ -32,14 +33,17 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          node-version: '20'
+          python-version: '3.13'
 
       - name: Install dependencies
         run: |
-          if [ -f package-lock.json ]; then npm ci; else npm i; fi
+          pip install -U pip setuptools wheel
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
 
       - name: Run Codex to fix issue
         id: codex
@@ -47,17 +51,19 @@ jobs:
         with:
           openai_api_key: ${{ secrets.OPENAI_API_KEY }}
           prompt: >-
-            You are working in this repository. The user opened an issue titled:
-            "${{ env.ISSUE_TITLE }}".
+            You are working in a Python package repository.
+            The user has opened an issue titled:
+            "${{ env.ISSUE_TITLE }}"
+
             Description:
             ${{ env.ISSUE_BODY }}
 
-            Identify the problem described in the issue, locate the relevant code,
-            implement the minimal change necessary to fix it, and stop.
-            Keep edits small and targeted. Do not refactor unrelated code.
+            Identify the bug or problem described in the issue, locate the relevant
+            Python code, and apply the smallest, most targeted fix necessary to resolve it.
+            Do not refactor unrelated code. Stop after fixing the issue.
 
       - name: Verify tests
-        run: npm test --silent || true
+        run: pytest -q || true
 
       - name: Create pull request with Codex fix
         uses: peter-evans/create-pull-request@v6
@@ -70,4 +76,4 @@ jobs:
             **Issue:** ${{ env.ISSUE_URL }}
             **Author:** @${{ env.ISSUE_USER }}
             **Description:** ${{ env.ISSUE_BODY }}
-            This PR contains the smallest possible fix inferred by Codex.
+            This PR contains the minimal change inferred by Codex to resolve the issue.
