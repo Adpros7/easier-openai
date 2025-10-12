@@ -10,11 +10,11 @@ permissions:
   pull-requests: write
 
 jobs:
-  create_pull_request:
+  create_pr:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -26,5 +26,5 @@ jobs:
           base: main
           title: "[codex] Auto PR from ${{ github.ref_name }}"
           body: |
-            This PR was auto-generated from branch `${{ github.ref_name }}`
+            Auto-generated PR from branch `${{ github.ref_name }}`  
           token: ${{ secrets.GITHUB_TOKEN }}
