@@ -1,0 +1,30 @@
+name: Auto PR for codex branches
+
+on:
+  push:
+    branches:
+      - 'codex/**'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  create_pull_request:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create or update Pull Request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: ${{ github.ref_name }}
+          base: main
+          title: "[codex] Auto PR from ${{ github.ref_name }}"
+          body: |
+            This PR was auto-generated from branch `${{ github.ref_name }}`
+          token: ${{ secrets.GITHUB_TOKEN }}
