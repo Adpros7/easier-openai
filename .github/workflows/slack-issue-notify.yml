@@ -48,7 +48,7 @@ jobs:
             --arg url "$ISSUE_URL" \
             '{
               channel: $channel,
-              text: "\($mention) fix this issue and create a PR: *\($title)*",
+              text: "\($mention) fix this issue: *\($title)*",
               blocks: [
                 {
                   "type": "section",
