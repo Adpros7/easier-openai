@@ -11,7 +11,7 @@ permissions:
 jobs:
   auto-fix:
     runs-on: ubuntu-latest
-    
+
     env:
       ISSUE_NUMBER: ${{ github.event.issue.number }}
       ISSUE_TITLE: ${{ github.event.issue.title }}
@@ -61,3 +61,5 @@ jobs:
             ```
             ${{ env.ISSUE_BODY }}
             ```
+            The PR contains the following changes:
+            ${{ steps.run_fix.outputs.pr_body }}

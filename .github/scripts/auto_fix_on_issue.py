@@ -5,7 +5,7 @@ import tempfile
 import sys
 import traceback
 from openai import OpenAI
-from github import Github
+from github import Github, Auth  # newer PyGithub versions prefer auth=…
 
 
 def run_shell(cmd: str, check: bool = True) -> str:
@@ -78,10 +78,21 @@ def commit_changes(branch: str):
     print("[INFO] Commit completed")
 
 
+def push_branch(branch: str):
+    print(f"[INFO] Pushing branch {branch} to origin")
+    # set upstream so PR base will see it
+    run_shell(f"git push --set-upstream origin {branch}")
+
+
 def create_pr(branch: str, base: str, title: str, body: str) -> str:
     print(f"[INFO] Opening PR: {branch} → {base} with title {title!r}")
-    gh = Github(os.environ.get("GITHUB_TOKEN"))
-    repo = gh.get_repo(os.environ.get("GITHUB_REPOSITORY"))
+    # Use newer auth syntax if possible
+    token = os.environ.get("GITHUB_TOKEN")
+    # For PyGithub v2+, they recommend `auth=Auth.Token(...)`
+    gh = (
+        Github(auth=Auth.Token(str(token))) if hasattr(Github, "__init__") else Github(token)
+    )
+    repo = gh.get_repo(str(os.environ.get("GITHUB_REPOSITORY")))
     pr = repo.create_pull(title=title, body=body, head=branch, base=base)
     print(f"[INFO] PR created number {pr.number}")
     return str(pr.number)
@@ -111,6 +122,9 @@ def main():
     branch = f"codex/auto-fix-issue-{issue_number}"
     commit_changes(branch)
 
+    # Push to remote so PR creation sees the branch
+    push_branch(branch)
+
     pr_title = f"Auto-fix issue #{issue_number}"
     pr_body = f"Issue: {issue_title}\n\nAuto-generated patch via Codex."
     try:
@@ -126,7 +140,6 @@ def main():
         with open(github_output, "a") as f:
             f.write(f"pr_number={pr_num}\n")
     else:
-        # fallback older method
         print(f"::set-output name=pr_number::{pr_num}")
 
 
