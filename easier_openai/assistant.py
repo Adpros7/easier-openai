@@ -91,6 +91,7 @@ class Assistant:
         self,
         api_key: str | None = None,
         model: ResponsesModel = "chatgpt-4o-latest",
+        tts_model: Literal["tts-1", "tts-1-hd", "gpt-4o-mini-tts"] = "tts-1",
         system_prompt: str = "",
         default_conversation: Conversation | bool = True,
         temperature: float | None = None,
@@ -104,6 +105,7 @@ class Assistant:
             api_key: Explicit OpenAI API key. When omitted the ``OPENAI_API_KEY`` environment
                 variable must be set.
             model: Default Responses API model identifier to use for `chat` requests.
+            tts_model: Default text-to-speech model identifier used by audio helpers.
             system_prompt: System instructions prepended to every conversation turn.
             default_conversation: Pass ``True`` to create a fresh server-side conversation,
                 supply an existing `Conversation` object to reuse it, or set to ``False`` to
@@ -132,6 +134,7 @@ class Assistant:
 
         self._api_key = str(resolved_key)
         self._model = model
+        self._tts_model = tts_model
         self._client = OpenAI(api_key=self._api_key)
         self._system_prompt = system_prompt
         self._temperature = temperature
@@ -929,6 +932,7 @@ class Assistant:
 
         field_map = {
             "model": "model",
+            "tts_model": "_tts_model",
             "system_prompt": "system_prompt",
             "temperature": "temperature",
             "reasoning_effort": "reasoning_effort",
@@ -949,7 +953,7 @@ class Assistant:
     def text_to_speech(
         self,
         input: str,
-        model: Literal["tts-1", "tts-1-hd", "gpt-4o-mini-tts"] = "tts-1",
+        model: Literal["tts-1", "tts-1-hd", "gpt-4o-mini-tts"] | None = None,
         voice: (
             str
             | Literal[
@@ -977,7 +981,7 @@ class Assistant:
 
         Args:
             input: Text content to synthesise.
-            model: Text-to-speech model identifier.
+            model: Text-to-speech model identifier; defaults to the assistant configuration when omitted.
             voice: Voice preset or literal name supported by the selected model.
             instructions: Optional style instructions forwarded to the API.
             response_format: Output container format to request.
@@ -997,9 +1001,11 @@ class Assistant:
             Non-``wav`` formats are written successfully but cannot be played inline by the
             helper; set ``play=False`` when requesting alternative formats.
         """
+        selected_model = model or self._tts_model or "tts-1"
+
         params = {
             "input": input,
-            "model": model,
+            "model": selected_model,
             "voice": voice,
             "instructions": instructions,
             "response_format": response_format,
@@ -1043,7 +1049,7 @@ class Assistant:
         file_search: Sequence[str] | None = None,
         custom_tools: Sequence[types.FunctionType] | None = None,
         tools_required: Literal["none", "auto", "required"] = "auto",
-        model: Literal["tts-1", "tts-1-hd", "gpt-4o-mini-tts"] = "tts-1",
+        model: Literal["tts-1", "tts-1-hd", "gpt-4o-mini-tts"] | None = None,
         voice: (
             str
             | Literal[
@@ -1079,7 +1085,7 @@ class Assistant:
             file_search: Iterable of file paths to ground the chat response.
             custom_tools: Additional tool callables (decorated via `openai_function`) available to the chat phase.
             tools_required: Passed through to the underlying `chat` call.
-            model: Text-to-speech model used to synthesise audio.
+            model: Text-to-speech model used to synthesise audio; defaults to the assistant configuration when omitted.
             voice: Voice preset for the speech model.
             instructions: Optional style guidance for the speech synthesis.
             response_format: Audio container requested from the speech API.
@@ -1114,8 +1120,10 @@ class Assistant:
 
         resp = self.chat(**param)
 
+        selected_model = model or self._tts_model or "tts-1"
+
         say_params = {
-            "model": model,
+            "model": selected_model,
             "voice": voice,
             "instructions": instructions,
             "response_format": response_format,
@@ -1222,6 +1230,7 @@ class Assistant:
         reasoning_effort: Literal["minimal", "low", "medium", "high"]
         summary_length: Literal["auto", "concise", "detailed"]
         function_call_list: list[types.FunctionType]
+        tts_model: Literal["tts-1", "tts-1-hd", "gpt-4o-mini-tts"]
 
     def mass_update(self, **__mass_update_helper: Unpack[__mass_update_helper]):
         """Bulk assign configuration attributes using keyword arguments.
@@ -1240,8 +1249,10 @@ class Assistant:
             Any provided keys are applied directly to instance attributes without additional validation.
             Updates to ``reasoning_effort`` or ``summary_length`` automatically rebuild the cached reasoning payload.
         """
+        field_map = {"tts_model": "_tts_model"}
+
         for key, value in __mass_update_helper.items():
-            setattr(self, key, value)
+            setattr(self, field_map.get(key, key), value)
         if {"reasoning_effort", "summary_length"} & set(__mass_update_helper):
             self._refresh_reasoning()
 
