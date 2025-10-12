@@ -38,10 +38,28 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Install ffmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Cache APT packages
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives
+          key: apt-cache-${{ runner.os }}-audio
+          restore-keys: |
+            apt-cache-${{ runner.os }}-
 
-      - name: Install dependencies
+      - name: Install ffmpeg and audio dev dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libasound2-dev portaudio19-dev
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            pip-${{ runner.os }}-
+
+      - name: Install Python dependencies
         run: |
           pip install -U pip setuptools wheel
           if [ -f requirements.txt ]; then
@@ -55,17 +73,17 @@ jobs:
           openai_api_key: ${{ secrets.OPENAI_API_KEY }}
           prompt: >-
             You are working in a Python package repository.
-            The user has opened an issue titled:
+            A user opened an issue titled:
             "${{ env.ISSUE_TITLE }}"
 
             Description:
             ${{ env.ISSUE_BODY }}
 
-            Identify the bug or problem described in the issue, locate the relevant
-            Python code, and apply the smallest, most targeted fix necessary to resolve it.
-            Do not refactor unrelated code. Stop after fixing the issue.
+            Identify the bug or issue, locate the relevant Python code,
+            and apply the smallest fix necessary to resolve it.
+            Do not refactor unrelated code or modify tests unless required.
 
-      - name: Verify tests
+      - name: Run tests
         run: pytest -q || true
 
       - name: Create pull request with Codex fix
