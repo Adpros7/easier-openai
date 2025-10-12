@@ -1,0 +1,6 @@
+on:
+    push:
+        branches:
+        - codex/*
+
+- name: Easy Pull Request
