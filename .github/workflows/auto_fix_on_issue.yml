@@ -11,6 +11,7 @@ permissions:
 jobs:
   auto-fix:
     runs-on: ubuntu-latest
+    
     env:
       ISSUE_NUMBER: ${{ github.event.issue.number }}
       ISSUE_TITLE: ${{ github.event.issue.title }}
@@ -22,11 +23,11 @@ jobs:
       - name: Check OpenAI key
         run: |
           if [ -z "$OPENAI_API_KEY" ]; then
-            echo "OPENAI_API_KEY not set; skipping auto-fix" >&2
+            echo "OPENAI_API_KEY not set. Exiting." >&2
             exit 1
           fi
 
-      - name: Checkout repo
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -43,10 +44,9 @@ jobs:
 
       - name: Run auto-fix script
         id: run_fix
-        run: |
-          python .github/scripts/auto_fix_on_issue.py
+        run: python .github/scripts/auto_fix_on_issue.py
 
-      - name: Create PR if generated
+      - name: Create pull request if patch applied
         if: steps.run_fix.outputs.pr_number != ''
         uses: peter-evans/create-pull-request@v6
         with:
