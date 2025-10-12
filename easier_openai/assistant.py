@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import audioop
 import base64
+import collections
 import inspect
 import json
 import os
@@ -8,8 +10,10 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 import types
 import warnings
+import wave
 from os import getenv
 from threading import BrokenBarrierError
 from typing import (TYPE_CHECKING, Any, Generator, Literal, Mapping, Sequence,
@@ -657,6 +661,276 @@ class Assistant:
 
         return generator()
 
+    def _resolve_realtime_model(self, candidate: str | None, *, allow_fallback: bool) -> str | None:
+        """Return the realtime model to use for audio helpers, or ``None`` when unsupported."""
+
+        model_name = str(candidate) if candidate is not None else None
+        if model_name and model_name in REALTIME_MODELS:
+            return model_name
+        if allow_fallback and self._use_realtime:
+            return str(self._model)
+        return None
+
+    @staticmethod
+    def _write_wav(path: str, audio: bytes, *, sample_rate: int) -> None:
+        """Persist raw PCM audio to a WAV container."""
+
+        with wave.open(path, "wb") as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(sample_rate)
+            wav_file.writeframes(audio)
+
+    def _realtime_audio_completion(
+        self,
+        *,
+        model: str,
+        text: str,
+        voice: str,
+        instructions: str | None,
+        speed: float,
+    ) -> bytes:
+        """Generate speech audio via the Realtime API."""
+
+        session_payload: dict[str, Any] = {
+            "type": "realtime",
+            "model": model,
+            "output_modalities": ["audio"],
+            "audio": {
+                "output": {
+                    "format": {"type": "audio/pcm", "rate": 24000},
+                    "voice": voice,
+                    "speed": speed,
+                }
+            },
+        }
+        if instructions:
+            session_payload["instructions"] = instructions
+
+        response_payload: dict[str, Any] = {
+            "output_modalities": ["audio"],
+            "input": [
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": text,
+                        }
+                    ],
+                }
+            ],
+            "audio": {
+                "output": {
+                    "format": {"type": "audio/pcm", "rate": 24000},
+                    "voice": voice,
+                    "speed": speed,
+                }
+            },
+        }
+        if instructions:
+            response_payload["instructions"] = instructions
+
+        audio_segments: list[bytes] = []
+
+        with self._client.realtime.connect(model=model) as connection:
+            connection.session.update(session=session_payload)
+            connection.response.create(response=response_payload)
+
+            while True:
+                event = connection.recv()
+                event_type = getattr(event, "type", None)
+
+                if event_type == "response.output_audio.delta":
+                    audio_segments.append(base64.b64decode(event.delta))
+                elif event_type == "response.done":
+                    break
+                elif event_type == "response.error":
+                    raise RuntimeError(getattr(event.error, "message", "Realtime API error"))
+                elif event_type == "error":
+                    raise RuntimeError(getattr(event, "error", "Realtime API error"))
+
+        if not audio_segments:
+            raise RuntimeError("Realtime API returned no audio.")
+
+        return b"".join(audio_segments)
+
+    def _collect_frames_for_mode(
+        self,
+        stt_model: Any,
+        mode: Literal["vad", "keyboard"] | Seconds,
+        log_directions: bool,
+        key: str,
+    ) -> list[bytes]:
+        """Capture microphone frames using the same heuristics as openai_stt."""
+
+        if mode == "keyboard":
+            try:
+                import keyboard as kb  # type: ignore[import]
+            except ImportError as exc:  # pragma: no cover - dependency provided by optional extra
+                raise RuntimeError("Keyboard mode requires the 'keyboard' package.") from exc
+
+            if log_directions:
+                print(f"Press {key} to start. Release to begin recording.")
+            kb.wait(key)
+            while kb.is_pressed(key):
+                time.sleep(0.01)
+
+            if log_directions:
+                print("Recording... Press key again to stop.")
+            stopped_announced = False
+
+            def stop_condition(_: dict[str, Any]) -> bool:
+                nonlocal stopped_announced
+                if kb.is_pressed(key):
+                    while kb.is_pressed(key):
+                        time.sleep(0.01)
+                    if log_directions and not stopped_announced:
+                        print("Stopped.")
+                        stopped_announced = True
+                    return True
+                return False
+
+            return stt_model._collect_frames(stop_condition=stop_condition)  # noqa: SLF001
+
+        if mode == "vad":
+            ring: collections.deque[bytes] = collections.deque(maxlen=stt_model.preroll_chunks)
+            state = {"triggered": False, "silence": 0, "recorded": 0}
+            if log_directions:
+                print("Listening...")
+            started_announced = False
+            ended_announced = False
+
+            def on_chunk(data: bytes, _frames: list[bytes], _ctx: dict[str, Any]):
+                nonlocal started_announced
+                is_speech = stt_model.vad.is_speech(data, stt_model.rate)
+                if not state["triggered"]:
+                    ring.append(data)
+                    if is_speech:
+                        state["triggered"] = True
+                        state["silence"] = 0
+                        state["recorded"] = len(ring)
+                        if log_directions and not started_announced:
+                            print("Speech started.")
+                            started_announced = True
+                        buffered = list(ring)
+                        ring.clear()
+                        return buffered
+                    return []
+
+                state["recorded"] += 1
+                if is_speech:
+                    state["silence"] = 0
+                else:
+                    state["silence"] += 1
+                return data
+
+            def stop_condition(_: dict[str, Any]) -> bool:
+                nonlocal ended_announced
+                if not state["triggered"]:
+                    return False
+                if state["recorded"] < stt_model.min_record_chunks:
+                    return False
+                if state["silence"] > stt_model.tail_silence_chunks:
+                    if log_directions and not ended_announced:
+                        print("Speech ended.")
+                        ended_announced = True
+                    return True
+                return False
+
+            return stt_model._collect_frames(  # noqa: SLF001
+                on_chunk=on_chunk,
+                stop_condition=stop_condition,
+            )
+
+        if isinstance(mode, int):
+            total_chunks = max(1, int((mode * 1000) / stt_model.chunk_ms))
+            return stt_model._collect_frames(  # noqa: SLF001
+                max_read_chunks=total_chunks,
+                min_appended_chunks=0,
+            )
+
+        raise ValueError("Unsupported recording mode.")
+
+    @staticmethod
+    def _resample_to_24khz(audio_frames: list[bytes], *, input_rate: int) -> bytes:
+        """Convert raw microphone frames to 24 kHz mono PCM."""
+
+        if not audio_frames:
+            raise RuntimeError("No audio captured.")
+
+        raw_audio = b"".join(audio_frames)
+        if input_rate == 24000:
+            return raw_audio
+        sample_width = 2
+        converted, _ = audioop.ratecv(raw_audio, sample_width, 1, input_rate, 24000, None)
+        return converted
+
+    def _realtime_transcribe(
+        self,
+        *,
+        model: str,
+        audio_pcm: bytes,
+    ) -> str:
+        """Send captured audio to the Realtime API and return the transcript."""
+
+        session_payload: dict[str, Any] = {
+            "type": "realtime",
+            "model": model,
+            "output_modalities": ["text"],
+            "audio": {
+                "input": {
+                    "format": {"type": "audio/pcm", "rate": 24000},
+                }
+            },
+        }
+        if self._system_prompt:
+            session_payload["instructions"] = self._system_prompt
+
+        response_payload: dict[str, Any] = {
+            "output_modalities": ["text"],
+            "input": [
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_audio",
+                            "audio": base64.b64encode(audio_pcm).decode("ascii"),
+                        }
+                    ],
+                }
+            ],
+        }
+
+        text_chunks: list[str] = []
+        final_text: str | None = None
+
+        with self._client.realtime.connect(model=model) as connection:
+            connection.session.update(session=session_payload)
+            connection.response.create(response=response_payload)
+
+            while True:
+                event = connection.recv()
+                event_type = getattr(event, "type", None)
+
+                if event_type == "response.output_text.delta":
+                    text_chunks.append(event.delta)
+                elif event_type == "response.output_text.done":
+                    final_text = getattr(event, "text", None)
+                elif event_type == "response.error":
+                    raise RuntimeError(getattr(event.error, "message", "Realtime API error"))
+                elif event_type == "error":
+                    raise RuntimeError(getattr(event, "error", "Realtime API error"))
+                elif event_type == "response.done":
+                    break
+
+        transcript = final_text or "".join(text_chunks)
+        if not transcript:
+            raise RuntimeError("Realtime API returned an empty transcript.")
+        return transcript
+
     def _build_realtime_payloads(
         self,
         *,
@@ -1226,6 +1500,61 @@ class Assistant:
             helper; set ``play=False`` when requesting alternative formats.
         """
         selected_model = model or self._tts_model or "tts-1"
+        realtime_model = self._resolve_realtime_model(
+            str(selected_model) if selected_model else None,
+            allow_fallback=model is None,
+        )
+
+        if realtime_model:
+            if response_format not in {"wav", "pcm"}:
+                raise ValueError(
+                    "Realtime text_to_speech supports only 'wav' or 'pcm' response_format values."
+                )
+
+            resolved_instructions = None if instructions == "NOT_GIVEN" else instructions
+            audio_pcm = self._realtime_audio_completion(
+                model=realtime_model,
+                text=input,
+                voice=voice,
+                instructions=resolved_instructions,
+                speed=speed,
+            )
+
+            def _persist(path: str) -> str:
+                os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+                if response_format == "wav":
+                    self._write_wav(path, audio_pcm, sample_rate=24000)
+                else:
+                    with open(path, "wb") as out_file:
+                        out_file.write(audio_pcm)
+                return path
+
+            if save_to_file_path:
+                target_path = save_to_file_path
+                if response_format == "wav" and not target_path.endswith(".wav"):
+                    target_path = f"{target_path}.wav"
+                if response_format == "pcm" and not target_path.endswith(".pcm"):
+                    target_path = f"{target_path}.pcm"
+                final_path = _persist(target_path)
+                if play:
+                    sound = playsound(final_path, block=play_in_background)
+                    while sound.is_alive():
+                        pass
+            else:
+                suffix = ".wav" if response_format == "wav" else ".pcm"
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix, delete_on_close=False) as tmp:
+                    final_path = _persist(tmp.name)
+                try:
+                    if play:
+                        sound = playsound(final_path, block=play_in_background)
+                        while sound.is_alive():
+                            pass
+                finally:
+                    os.remove(final_path)
+
+            if response_format != "wav" and play:
+                print("Only wav format is supported for playing audio")
+            return
 
         params = {
             "input": input,
@@ -1397,31 +1726,47 @@ class Assistant:
         """
         wait_until(not STT_LOADER.poll() is None)
         import openai_stt as stt
-
         selected_model = model or self._stt_model
+        realtime_model = self._resolve_realtime_model(
+            str(selected_model) if selected_model else None,
+            allow_fallback=model is None,
+        )
 
-        if self._stt is None or self._loaded_stt_model != selected_model:
+        capture_model = selected_model
+        if realtime_model and capture_model and str(capture_model) in REALTIME_MODELS:
+            capture_model = "base"
+        capture_model = capture_model or "base"
+
+        cache_key = str(capture_model)
+        if self._stt is None or self._loaded_stt_model != cache_key:
             stt_model = stt.STT(
-                model=selected_model,
+                model=capture_model,
                 aggressive=aggressive,
                 chunk_duration_ms=chunk_duration_ms,
             )
             self._stt = stt_model
-            self._loaded_stt_model = selected_model
-
+            self._loaded_stt_model = cache_key
         else:
             stt_model = self._stt
 
+        if realtime_model:
+            frames = self._collect_frames_for_mode(
+                stt_model=stt_model,
+                mode=mode,
+                log_directions=log_directions,
+                key=key,
+            )
+            audio_pcm = self._resample_to_24khz(frames, input_rate=stt_model.rate)
+            return self._realtime_transcribe(model=realtime_model, audio_pcm=audio_pcm)
+
         if mode == "keyboard":
-            result = stt_model.record_with_keyboard(
-                log=log_directions, key=key)
-        elif mode == "vad":
-            result = stt_model.record_with_vad(log=log_directions)
+            return stt_model.record_with_keyboard(log=log_directions, key=key)
+        if mode == "vad":
+            return stt_model.record_with_vad(log=log_directions)
+        if isinstance(mode, Seconds):
+            return stt_model.record_for_seconds(mode)
 
-        elif isinstance(mode, Seconds):
-            result = stt_model.record_for_seconds(mode)
-
-        return result
+        raise ValueError("Unsupported mode for speech_to_text.")
 
     class __mass_update_helper(TypedDict, total=False):
         """TypedDict describing the accepted keyword arguments for `mass_update`.
