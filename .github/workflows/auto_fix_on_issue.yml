@@ -66,11 +66,16 @@ jobs:
             pip install -r requirements.txt
           fi
 
+      - name: Initialize Codex home
+        run: mkdir -p ~/.codex
+
       - name: Run Codex to fix issue
         id: codex
         uses: openai/codex-action@main
         with:
-          openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          codex-home: ~/.codex
+          sandbox: workspace-write
           prompt: >-
             You are working in a Python package repository.
             A user opened an issue titled:
