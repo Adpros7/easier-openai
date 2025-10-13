@@ -12,7 +12,10 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # get full history for diff
 
       - name: Install Codex CLI
         run: npm install -g @openai/codex
@@ -22,12 +25,34 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          DIFF=$(git fetch origin main && git diff origin/main...HEAD)
-          PROMPT="Review the following pull request diff. Give constructive feedback in markdown, focusing on code quality, readability, and potential bugs. End with a numeric score out of 10 labeled 'Score'.\n\n$DIFF"
+          # Fetch all branches so we can diff properly
+          git fetch --all
+
+          BASE_BRANCH="${{ github.event.pull_request.base.ref }}"
+          HEAD_BRANCH="${{ github.event.pull_request.head.ref }}"
+
+          echo "Comparing origin/$BASE_BRANCH...origin/$HEAD_BRANCH"
+
+          # Make sure branches exist locally
+          git fetch origin "$BASE_BRANCH":"$BASE_BRANCH"
+          git fetch origin "$HEAD_BRANCH":"$HEAD_BRANCH"
+
+          # Try to get diff; if not possible, fallback
+          DIFF=$(git diff "origin/$BASE_BRANCH...origin/$HEAD_BRANCH" || echo "No diff available")
+
+          PROMPT="You are Codex, a concise but sharp code reviewer. Review the following Git diff between $BASE_BRANCH and $HEAD_BRANCH.
+Focus on clarity, correctness, and structure. Give specific, actionable feedback in markdown format. 
+End your message with '**Score: <number>/10**' on its own line.\n\n$DIFF"
+
+          echo "Sending diff to Codex..."
           OUTPUT=$(echo "$PROMPT" | npx codex)
-          echo "REVIEW<<EOF" >> $GITHUB_ENV
-          echo "$OUTPUT" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
+          
+          # Save Codex's output to env
+          {
+            echo "REVIEW<<EOF"
+            echo "$OUTPUT"
+            echo "EOF"
+          } >> $GITHUB_ENV
 
       - name: Post Codex review comment
         env:
