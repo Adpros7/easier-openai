@@ -17,17 +17,14 @@ jobs:
       - name: Install Codex CLI
         run: npm install -g @openai/codex
 
-      - name: Generate PR review with Codex
+      - name: Generate review with Codex
         id: review
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          OUTPUT=$(npx @openai/codex review-pr \
-            --repo ${{ github.repository }} \
-            --pr ${{ github.event.pull_request.number }} \
-            --format markdown \
-            --summary "Provide a brief, blunt review and end with a numeric score out of 10 for overall quality." \
-          )
+          DIFF=$(git fetch origin main && git diff origin/main...HEAD)
+          PROMPT="Review the following pull request diff. Give constructive feedback in markdown, focusing on code quality, readability, and potential bugs. End with a numeric score out of 10 labeled 'Score'.\n\n$DIFF"
+          OUTPUT=$(echo "$PROMPT" | npx codex)
           echo "REVIEW<<EOF" >> $GITHUB_ENV
           echo "$OUTPUT" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
