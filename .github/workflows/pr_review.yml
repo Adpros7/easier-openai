@@ -1,12 +1,13 @@
 name: Automated PR Review and Fixes
+
 on:
   pull_request:
     types: [opened, synchronize, reopened]
 
 permissions:
-  contents: write            # allow pushing code changes
-  pull-requests: write       # allow commenting and PR edits
-  issues: write              # allow commenting on PR (issues API)
+  contents: write
+  pull-requests: write
+  issues: write
 
 jobs:
   review-fix:
@@ -14,11 +15,12 @@ jobs:
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # full history for accurate diffs
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -32,10 +34,10 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
       - name: Run tests
-        run: pytest -q || true  # run pytest, but don't fail if tests fail:contentReference[oaicite:4]{index=4}
+        run: pytest -q || true
 
       - name: Run linter
-        run: flake8 . || true   # run flake8 (or your linter of choice), ignore non-zero exit
+        run: flake8 . || true
 
       - name: Generate initial AI review (Ollama Qwen3-Coder)
         id: review0
@@ -43,24 +45,20 @@ jobs:
           BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
           HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
-          # Fetch base and head to ensure we can diff
           git fetch origin "$BASE_BRANCH":"$BASE_BRANCH"
           git fetch origin "$HEAD_BRANCH":"$HEAD_BRANCH"
           DIFF=$(git diff "origin/$BASE_BRANCH...origin/$HEAD_BRANCH" || echo "")
-          # Construct review prompt for the LLM
           read -r -d '' PROMPT << EOP
 You are a code reviewer. Review the following Git diff for this PR, focusing on clarity, correctness, and structure.
 Provide specific, actionable feedback in markdown format.
-End your review with **Score: <number>/10** on a separate line.:contentReference[oaicite:5]{index=5}
+End your review with **Score: <number>/10** on a separate line.
 \`\`\`diff
 $DIFF
 \`\`\`
 EOP
-          # Call Ollama Cloud API for Qwen3-Coder model
           RESPONSE_JSON=$(curl -s -H "Authorization: Bearer $OLLAMA_API_KEY" https://ollama.com/api/generate \
                           -d '{"model": "qwen3-coder:480b-cloud", "prompt": "'"${PROMPT//\"/\\\"}"'", "stream": false}')
           REVIEW_TEXT=$(echo "$RESPONSE_JSON" | jq -r '.response')
-          # Extract score (digits before /10)
           SCORE=$(echo "$REVIEW_TEXT" | grep -Eo 'Score: *[0-9]+/10' | grep -Eo '[0-9]+')
           echo "body<<EOF" >> $GITHUB_OUTPUT
           echo "$REVIEW_TEXT" >> $GITHUB_OUTPUT
@@ -73,7 +71,7 @@ EOP
           gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments \
             -f body="${{ steps.review0.outputs.body }}"
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}:contentReference[oaicite:6]{index=6}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Codex fix attempt 1
         id: fix1
@@ -87,9 +85,9 @@ EOP
             <<<<FEEDBACK
 ${{ steps.review0.outputs.body }}
 <<<<FEEDBACK
-            Apply all necessary changes to the codebase to address the review comments. Make minimal, targeted fixes (do not introduce unrelated changes). Ensure the code is clear, correct, and meets the project's standards. Save changes to the repository.
-
-          sandbox: workspace-write   # allow Codex to modify files in the repo:contentReference[oaicite:7]{index=7}
+            Apply all necessary changes to the codebase to address the review comments.
+            Make minimal, targeted fixes (do not introduce unrelated changes). Ensure the code is clear, correct, and meets the project's standards.
+          sandbox: workspace-write
 
       - name: Commit and push fixes (attempt 1)
         if: ${{ steps.fix1.outcome == 'success' && steps.review0.outputs.score < 9 }}
@@ -102,8 +100,7 @@ ${{ steps.review0.outputs.body }}
             exit 0
           fi
           git commit -m "chore: Codex auto-fix attempt 1"
-          # Push the changes to the PR branch
-          git push || echo "Push failed. (If this is a forked repository PR, auto-push may not be permitted.)"
+          git push || echo "Push failed (possible forked PR)."
 
       - name: Re-run tests after attempt 1
         if: ${{ steps.review0.outputs.score < 9 }}
@@ -120,11 +117,9 @@ ${{ steps.review0.outputs.body }}
           BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
           HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
-          # Compute diff of updated code
           git fetch origin "$BASE_BRANCH"
           git fetch origin "$HEAD_BRANCH"
           DIFF=$(git diff "origin/$BASE_BRANCH...origin/$HEAD_BRANCH" || echo "")
-          # Reuse the same review prompt template for updated diff
           read -r -d '' PROMPT << EOP
 You are a code reviewer. Review the following updated Git diff for this PR.
 Focus on any remaining issues and overall code quality. End with **Score: <number>/10**.
@@ -143,8 +138,9 @@ EOP
 
       - name: Comment review after attempt 1
         if: ${{ steps.review1.outputs.body != '' }}
-        run: gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments \
-               -f body="${{ steps.review1.outputs.body }}"
+        run: |
+          gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments \
+            -f body="${{ steps.review1.outputs.body }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -159,8 +155,8 @@ EOP
             <<<<FEEDBACK
 ${{ steps.review1.outputs.body }}
 <<<<FEEDBACK
-            Please apply additional changes to address the above feedback. Focus only on unresolved problems. Ensure all previous and new review comments are fully resolved in the code.
-
+            Please apply additional changes to address the above feedback.
+            Focus only on unresolved problems. Ensure all previous and new review comments are fully resolved in the code.
           sandbox: workspace-write
 
       - name: Commit and push fixes (attempt 2)
@@ -212,8 +208,9 @@ EOP
 
       - name: Comment review after attempt 2
         if: ${{ steps.review2.outputs.body != '' }}
-        run: gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments \
-               -f body="${{ steps.review2.outputs.body }}"
+        run: |
+          gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments \
+            -f body="${{ steps.review2.outputs.body }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -229,7 +226,6 @@ EOP
 ${{ steps.review2.outputs.body }}
 <<<<FEEDBACK
             Make final adjustments to address any remaining issues pointed out. This is the last automatic fix attempt, so resolve all problems to aim for a high final score.
-
           sandbox: workspace-write
 
       - name: Commit and push fixes (attempt 3)
@@ -281,8 +277,9 @@ EOP
 
       - name: Comment review after attempt 3
         if: ${{ steps.review3.outputs.body != '' }}
-        run: gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments \
-               -f body="${{ steps.review3.outputs.body }}"
+        run: |
+          gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments \
+            -f body="${{ steps.review3.outputs.body }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -290,6 +287,6 @@ EOP
         if: ${{ steps.review3.outputs.score && steps.review3.outputs.score < 9 }}
         run: |
           gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments \
-            -f body="⚠️ Automated fixes exhausted. The code still received a **${{ steps.review3.outputs.score }}/10** score after 3 attempts. A human review is required to address the remaining issues."
+            -f body="⚠️ Automated fixes exhausted. The code still received a **${{ steps.review3.outputs.score }}/10** score after 3 attempts. A human review is required."
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
