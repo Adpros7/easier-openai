@@ -1,62 +1,295 @@
-name: Codex Auto PR Review
-
+name: Automated PR Review and Fixes
 on:
   pull_request:
     types: [opened, synchronize, reopened]
 
-jobs:
-  codex_review:
-    runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
-      contents: read
+permissions:
+  contents: write            # allow pushing code changes
+  pull-requests: write       # allow commenting and PR edits
+  issues: write              # allow commenting on PR (issues API)
 
+jobs:
+  review-fix:
+    runs-on: ubuntu-latest
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
     steps:
-      - name: Checkout PR branch
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # get full history for diff
+          fetch-depth: 0   # full history for accurate diffs
 
-      - name: Install Codex CLI
-        run: npm install -g @openai/codex
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-      - name: Generate review with Codex
-        id: review
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      - name: Install dependencies
         run: |
-          # Fetch all branches so we can diff properly
-          git fetch --all
+          sudo apt-get update && sudo apt-get install -y ffmpeg libasound2-dev portaudio19-dev jq
+          pip install -U pip setuptools wheel
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-          BASE_BRANCH="${{ github.event.pull_request.base.ref }}"
-          HEAD_BRANCH="${{ github.event.pull_request.head.ref }}"
+      - name: Run tests
+        run: pytest -q || true  # run pytest, but don't fail if tests fail:contentReference[oaicite:4]{index=4}
 
-          echo "Comparing origin/$BASE_BRANCH...origin/$HEAD_BRANCH"
+      - name: Run linter
+        run: flake8 . || true   # run flake8 (or your linter of choice), ignore non-zero exit
 
-          # Make sure branches exist locally
+      - name: Generate initial AI review (Ollama Qwen3-Coder)
+        id: review0
+        env:
+          BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          # Fetch base and head to ensure we can diff
           git fetch origin "$BASE_BRANCH":"$BASE_BRANCH"
           git fetch origin "$HEAD_BRANCH":"$HEAD_BRANCH"
+          DIFF=$(git diff "origin/$BASE_BRANCH...origin/$HEAD_BRANCH" || echo "")
+          # Construct review prompt for the LLM
+          read -r -d '' PROMPT << EOP
+You are a code reviewer. Review the following Git diff for this PR, focusing on clarity, correctness, and structure.
+Provide specific, actionable feedback in markdown format.
+End your review with **Score: <number>/10** on a separate line.:contentReference[oaicite:5]{index=5}
+\`\`\`diff
+$DIFF
+\`\`\`
+EOP
+          # Call Ollama Cloud API for Qwen3-Coder model
+          RESPONSE_JSON=$(curl -s -H "Authorization: Bearer $OLLAMA_API_KEY" https://ollama.com/api/generate \
+                          -d '{"model": "qwen3-coder:480b-cloud", "prompt": "'"${PROMPT//\"/\\\"}"'", "stream": false}')
+          REVIEW_TEXT=$(echo "$RESPONSE_JSON" | jq -r '.response')
+          # Extract score (digits before /10)
+          SCORE=$(echo "$REVIEW_TEXT" | grep -Eo 'Score: *[0-9]+/10' | grep -Eo '[0-9]+')
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          echo "$REVIEW_TEXT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "score=$SCORE" >> $GITHUB_OUTPUT
 
-          # Try to get diff; if not possible, fallback
-          DIFF=$(git diff "origin/$BASE_BRANCH...origin/$HEAD_BRANCH" || echo "No diff available")
-
-          PROMPT="You are Codex, a concise but sharp code reviewer. Review the following Git diff between $BASE_BRANCH and $HEAD_BRANCH.
-Focus on clarity, correctness, and structure. Give specific, actionable feedback in markdown format. 
-End your message with '**Score: <number>/10**' on its own line.\n\n$DIFF"
-
-          echo "Sending diff to Codex..."
-          OUTPUT=$(echo "$PROMPT" | npx codex)
-          
-          # Save Codex's output to env
-          {
-            echo "REVIEW<<EOF"
-            echo "$OUTPUT"
-            echo "EOF"
-          } >> $GITHUB_ENV
-
-      - name: Post Codex review comment
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Comment initial review
+        if: ${{ steps.review0.outputs.body != '' }}
         run: |
           gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments \
-            -f body="${{ env.REVIEW }}"
+            -f body="${{ steps.review0.outputs.body }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}:contentReference[oaicite:6]{index=6}
+
+      - name: Codex fix attempt 1
+        id: fix1
+        if: ${{ steps.review0.outputs.score && steps.review0.outputs.score < 9 }}
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt: |
+            You are an AI coding assistant tasked with improving the pull request code based on the review feedback below.
+            Review feedback:
+            <<<<FEEDBACK
+${{ steps.review0.outputs.body }}
+<<<<FEEDBACK
+            Apply all necessary changes to the codebase to address the review comments. Make minimal, targeted fixes (do not introduce unrelated changes). Ensure the code is clear, correct, and meets the project's standards. Save changes to the repository.
+
+          sandbox: workspace-write   # allow Codex to modify files in the repo:contentReference[oaicite:7]{index=7}
+
+      - name: Commit and push fixes (attempt 1)
+        if: ${{ steps.fix1.outcome == 'success' && steps.review0.outputs.score < 9 }}
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes from Codex in attempt 1."
+            exit 0
+          fi
+          git commit -m "chore: Codex auto-fix attempt 1"
+          # Push the changes to the PR branch
+          git push || echo "Push failed. (If this is a forked repository PR, auto-push may not be permitted.)"
+
+      - name: Re-run tests after attempt 1
+        if: ${{ steps.review0.outputs.score < 9 }}
+        run: pytest -q || true
+
+      - name: Re-run linter after attempt 1
+        if: ${{ steps.review0.outputs.score < 9 }}
+        run: flake8 . || true
+
+      - name: Generate review after attempt 1
+        id: review1
+        if: ${{ steps.review0.outputs.score < 9 }}
+        env:
+          BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          # Compute diff of updated code
+          git fetch origin "$BASE_BRANCH"
+          git fetch origin "$HEAD_BRANCH"
+          DIFF=$(git diff "origin/$BASE_BRANCH...origin/$HEAD_BRANCH" || echo "")
+          # Reuse the same review prompt template for updated diff
+          read -r -d '' PROMPT << EOP
+You are a code reviewer. Review the following updated Git diff for this PR.
+Focus on any remaining issues and overall code quality. End with **Score: <number>/10**.
+\`\`\`diff
+$DIFF
+\`\`\`
+EOP
+          RESPONSE_JSON=$(curl -s -H "Authorization: Bearer $OLLAMA_API_KEY" https://ollama.com/api/generate \
+                          -d '{"model": "qwen3-coder:480b-cloud", "prompt": "'"${PROMPT//\"/\\\"}"'", "stream": false}')
+          REVIEW_TEXT=$(echo "$RESPONSE_JSON" | jq -r '.response')
+          SCORE=$(echo "$REVIEW_TEXT" | grep -Eo 'Score: *[0-9]+/10' | grep -Eo '[0-9]+')
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          echo "$REVIEW_TEXT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "score=$SCORE" >> $GITHUB_OUTPUT
+
+      - name: Comment review after attempt 1
+        if: ${{ steps.review1.outputs.body != '' }}
+        run: gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments \
+               -f body="${{ steps.review1.outputs.body }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Codex fix attempt 2
+        id: fix2
+        if: ${{ steps.review1.outputs.score && steps.review1.outputs.score < 9 }}
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt: |
+            The latest AI code review (after one fix) still reports issues:
+            <<<<FEEDBACK
+${{ steps.review1.outputs.body }}
+<<<<FEEDBACK
+            Please apply additional changes to address the above feedback. Focus only on unresolved problems. Ensure all previous and new review comments are fully resolved in the code.
+
+          sandbox: workspace-write
+
+      - name: Commit and push fixes (attempt 2)
+        if: ${{ steps.fix2.outcome == 'success' && steps.review1.outputs.score < 9 }}
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes from Codex in attempt 2."
+            exit 0
+          fi
+          git commit -m "chore: Codex auto-fix attempt 2"
+          git push || echo "Push failed (possible forked PR)."
+
+      - name: Re-run tests after attempt 2
+        if: ${{ steps.review1.outputs.score < 9 }}
+        run: pytest -q || true
+
+      - name: Re-run linter after attempt 2
+        if: ${{ steps.review1.outputs.score < 9 }}
+        run: flake8 . || true
+
+      - name: Generate review after attempt 2
+        id: review2
+        if: ${{ steps.review1.outputs.score < 9 }}
+        env:
+          BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          git fetch origin "$BASE_BRANCH"
+          git fetch origin "$HEAD_BRANCH"
+          DIFF=$(git diff "origin/$BASE_BRANCH...origin/$HEAD_BRANCH" || echo "")
+          read -r -d '' PROMPT << EOP
+You are a code reviewer. Here is the updated diff after two rounds of fixes.
+Please identify any remaining issues. End with **Score: <number>/10**.
+\`\`\`diff
+$DIFF
+\`\`\`
+EOP
+          RESPONSE_JSON=$(curl -s -H "Authorization: Bearer $OLLAMA_API_KEY" https://ollama.com/api/generate \
+                          -d '{"model": "qwen3-coder:480b-cloud", "prompt": "'"${PROMPT//\"/\\\"}"'", "stream": false}')
+          REVIEW_TEXT=$(echo "$RESPONSE_JSON" | jq -r '.response')
+          SCORE=$(echo "$REVIEW_TEXT" | grep -Eo 'Score: *[0-9]+/10' | grep -Eo '[0-9]+')
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          echo "$REVIEW_TEXT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "score=$SCORE" >> $GITHUB_OUTPUT
+
+      - name: Comment review after attempt 2
+        if: ${{ steps.review2.outputs.body != '' }}
+        run: gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments \
+               -f body="${{ steps.review2.outputs.body }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Codex fix attempt 3
+        id: fix3
+        if: ${{ steps.review2.outputs.score && steps.review2.outputs.score < 9 }}
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt: |
+            The code still did not reach a 9/10 score after two fixes. The latest review is below:
+            <<<<FEEDBACK
+${{ steps.review2.outputs.body }}
+<<<<FEEDBACK
+            Make final adjustments to address any remaining issues pointed out. This is the last automatic fix attempt, so resolve all problems to aim for a high final score.
+
+          sandbox: workspace-write
+
+      - name: Commit and push fixes (attempt 3)
+        if: ${{ steps.fix3.outcome == 'success' && steps.review2.outputs.score < 9 }}
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes from Codex in attempt 3."
+            exit 0
+          fi
+          git commit -m "chore: Codex auto-fix attempt 3"
+          git push || echo "Push failed (possible forked PR)."
+
+      - name: Re-run tests after attempt 3
+        if: ${{ steps.review2.outputs.score < 9 }}
+        run: pytest -q || true
+
+      - name: Re-run linter after attempt 3
+        if: ${{ steps.review2.outputs.score < 9 }}
+        run: flake8 . || true
+
+      - name: Generate review after attempt 3
+        id: review3
+        if: ${{ steps.review2.outputs.score < 9 }}
+        env:
+          BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          git fetch origin "$BASE_BRANCH"
+          git fetch origin "$HEAD_BRANCH"
+          DIFF=$(git diff "origin/$BASE_BRANCH...origin/$HEAD_BRANCH" || echo "")
+          read -r -d '' PROMPT << EOP
+You are a code reviewer. Here is the diff after three rounds of fixes.
+Provide a final assessment. End with **Score: <number>/10**.
+\`\`\`diff
+$DIFF
+\`\`\`
+EOP
+          RESPONSE_JSON=$(curl -s -H "Authorization: Bearer $OLLAMA_API_KEY" https://ollama.com/api/generate \
+                          -d '{"model": "qwen3-coder:480b-cloud", "prompt": "'"${PROMPT//\"/\\\"}"'", "stream": false}')
+          REVIEW_TEXT=$(echo "$RESPONSE_JSON" | jq -r '.response')
+          SCORE=$(echo "$REVIEW_TEXT" | grep -Eo 'Score: *[0-9]+/10' | grep -Eo '[0-9]+')
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          echo "$REVIEW_TEXT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "score=$SCORE" >> $GITHUB_OUTPUT
+
+      - name: Comment review after attempt 3
+        if: ${{ steps.review3.outputs.body != '' }}
+        run: gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments \
+               -f body="${{ steps.review3.outputs.body }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Final verdict comment (if human review needed)
+        if: ${{ steps.review3.outputs.score && steps.review3.outputs.score < 9 }}
+        run: |
+          gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments \
+            -f body="⚠️ Automated fixes exhausted. The code still received a **${{ steps.review3.outputs.score }}/10** score after 3 attempts. A human review is required to address the remaining issues."
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
