@@ -4,6 +4,7 @@ import base64
 import inspect
 import json
 import os
+import mimetypes
 import re
 import subprocess
 import sys
@@ -38,6 +39,8 @@ from playsound3 import playsound
 from syntaxmod import wait_until
 from typing_extensions import TypedDict
 from google import genai
+from google.genai import types as genai_types
+from pydantic import ValidationError
 
 warnings.filterwarnings("ignore")
 
@@ -160,21 +163,26 @@ class Assistant:
             constructs a reusable `Reasoning` payload that is automatically applied to every
             `chat` call.
         """
+        self._model = model
+        self._system_prompt = system_prompt
+        self._temperature = temperature
+        self._reasoning_effort = reasoning_effort
+        self._summary_length = summary_length
+        self._reasoning: Reasoning | None = None
+        self._function_call_list: list[types.FunctionType] = []
+        self._conversation: Conversation | None = None
+        self._conversation_id: str | None = None
+        self._client: OpenAI | None = None
+        self._gclient: genai.Client | None = None
+        self._stt: Any = None
+
         if model in get_args(ResponsesModel):
             resolved_key = api_key or getenv("OPENAI_API_KEY")
             if not resolved_key:
                 raise ValueError("No API key provided.")
 
             self._api_key = str(resolved_key)
-            self._model = model
             self._client = OpenAI(api_key=self._api_key)
-            self._system_prompt = system_prompt
-            self._temperature = temperature
-            self._reasoning_effort = reasoning_effort
-            self._summary_length = summary_length
-            self._reasoning: Reasoning | None = None
-
-            self._function_call_list: list[types.FunctionType] = []
 
             conversation: Conversation | None = None
             if default_conversation is True:
@@ -185,19 +193,43 @@ class Assistant:
             self._conversation = conversation
             self._conversation_id = getattr(conversation, "id", None)
 
-            self._stt: Any = None
             self._refresh_reasoning()
-            
         elif model in get_args(GeminiModels):
-            self._gclient = genai.Client(api_key=api_key or getenv("GEMINI_API_KEY"))
-            self._model = model
-            self._system_prompt = system_prompt
-            self._temperature = temperature
-            self._reasoning_effort = reasoning_effort
-            self._summary_length = summary_length
+            resolved_key = api_key or getenv("GEMINI_API_KEY")
+            if not resolved_key:
+                raise ValueError(
+                    "No Gemini API key provided. Set GEMINI_API_KEY or pass api_key directly."
+                )
+
+            self._api_key = str(resolved_key)
+            self._gclient = genai.Client(api_key=self._api_key)
+            self._gemini_base_config = self._build_gemini_config()
+            self._gemini_chats: dict[str, Any] = {}
+            self._gemini_default_chat_id: str | None = None
+            if default_conversation is True:
+                chat = self._create_gemini_chat()
+                self._gemini_default_chat_id = "default"
+                self._gemini_chats[self._gemini_default_chat_id] = chat
+            elif isinstance(default_conversation, bool) and not default_conversation:
+                self._gemini_default_chat_id = None
+            else:
+                if default_conversation is not True:
+                    warnings.warn(
+                        "Gemini conversations do not reuse OpenAI Conversation objects; "
+                        "starting a fresh chat instead."
+                    )
+                chat = self._create_gemini_chat()
+                self._gemini_default_chat_id = "default"
+                self._gemini_chats[self._gemini_default_chat_id] = chat
+        else:
+            raise ValueError(f"Unsupported model '{model}' for Assistant.")
 
     def _refresh_reasoning(self) -> None:
         """Rebuild the reusable Reasoning payload from the current configuration."""
+
+        if self._model not in get_args(ResponsesModel):
+            self._reasoning = None
+            return
 
         reasoning_kwargs: dict[str, Any] = {}
         if self._reasoning_effort:
@@ -205,6 +237,254 @@ class Assistant:
         if self._summary_length:
             reasoning_kwargs["summary"] = self._summary_length
         self._reasoning = Reasoning(**reasoning_kwargs) if reasoning_kwargs else None
+
+    def _build_gemini_config(
+        self,
+        *,
+        max_output_tokens: int | None = None,
+        tools: Sequence[genai_types.Tool] | None = None,
+        response_schema: Mapping[str, Any] | None = None,
+        automatic_function_calling: genai_types.AutomaticFunctionCallingConfig | None = None,
+        cached_content: str | None = None,
+    ) -> genai_types.GenerateContentConfig:
+        """Construct a Gemini `GenerateContentConfig` using current assistant defaults."""
+
+        config_kwargs: dict[str, Any] = {}
+        if self._system_prompt:
+            config_kwargs["system_instruction"] = self._system_prompt
+        if self._temperature is not None:
+            config_kwargs["temperature"] = self._temperature
+        if max_output_tokens is not None:
+            config_kwargs["max_output_tokens"] = max_output_tokens
+        if tools:
+            config_kwargs["tools"] = list(tools)
+        if response_schema:
+            serialized_schema = json.loads(json.dumps(response_schema))
+            config_kwargs["response_json_schema"] = serialized_schema
+            config_kwargs["response_mime_type"] = "application/json"
+        if automatic_function_calling is not None:
+            config_kwargs["automatic_function_calling"] = automatic_function_calling
+        if cached_content:
+            config_kwargs["cached_content"] = cached_content
+
+        return genai_types.GenerateContentConfig(**config_kwargs)
+
+    def _create_gemini_chat(
+        self, history: Sequence[genai_types.Content] | None = None
+    ) -> Any:
+        """Create a Gemini chat session seeded with optional history."""
+
+        if not self._gclient:
+            raise RuntimeError("Gemini client not initialised.")
+
+        base_config = getattr(self, "_gemini_base_config", None)
+        return self._gclient.chats.create(
+            model=self._model,
+            config=base_config,
+            history=list(history) if history else [],
+        )
+
+    def _resolve_gemini_chat(self, conv_id: Any) -> Any:
+        """Return a Gemini chat session matching the provided conversation identifier."""
+
+        if not self._gclient:
+            raise RuntimeError("Gemini client not initialised.")
+
+        if hasattr(conv_id, "send_message"):
+            return conv_id
+
+        if conv_id is True:
+            key = self._gemini_default_chat_id or "default"
+            chat = self._gemini_chats.get(key)
+            if chat is None:
+                chat = self._create_gemini_chat()
+                self._gemini_chats[key] = chat
+                self._gemini_default_chat_id = key
+            return chat
+
+        if isinstance(conv_id, str):
+            chat = self._gemini_chats.get(conv_id)
+            if chat is None:
+                chat = self._create_gemini_chat()
+                self._gemini_chats[conv_id] = chat
+            return chat
+
+        if conv_id in (False, None):
+            return self._create_gemini_chat()
+
+        return self._create_gemini_chat()
+
+    def _convert_image_to_gemini_part(self, image: Any) -> genai_types.Part | None:
+        """Translate supported image inputs into Gemini content parts."""
+
+        try:
+            image_type = getattr(image, "type", None)
+            image_payload = getattr(image, "image", None)
+
+            if image_type == "Base64" and isinstance(image_payload, Sequence):
+                data = base64.b64decode(image_payload[0])
+                extension = str(image_payload[2]).lower() if len(image_payload) > 2 else "png"
+                mime_type = f"image/{extension}"
+                return genai_types.Part(
+                    inline_data=genai_types.Blob(data=data, mime_type=mime_type)
+                )
+
+            if image_type == "filepath" and isinstance(image_payload, Sequence):
+                path = str(image_payload[0])
+                if os.path.exists(path):
+                    mime_type, _ = mimetypes.guess_type(path)
+                    mime_type = mime_type or "application/octet-stream"
+                    with open(path, "rb") as fh:
+                        data = fh.read()
+                    return genai_types.Part(
+                        inline_data=genai_types.Blob(data=data, mime_type=mime_type)
+                    )
+
+            if image_type == "image_url" and isinstance(image_payload, Sequence):
+                url = str(image_payload[0])
+                if url:
+                    return genai_types.Part(text=f"[Image: {url}]")
+
+            if image_type is None:
+                if isinstance(image, (bytes, bytearray)):
+                    return genai_types.Part(
+                        inline_data=genai_types.Blob(
+                            data=bytes(image), mime_type="application/octet-stream"
+                        )
+                    )
+                if isinstance(image, str):
+                    if os.path.exists(image):
+                        mime_type, _ = mimetypes.guess_type(image)
+                        mime_type = mime_type or "application/octet-stream"
+                        with open(image, "rb") as fh:
+                            data = fh.read()
+                        return genai_types.Part(
+                            inline_data=genai_types.Blob(
+                                data=data,
+                                mime_type=mime_type,
+                            )
+                        )
+                    try:
+                        data = base64.b64decode(image, validate=True)
+                        return genai_types.Part(
+                            inline_data=genai_types.Blob(
+                                data=data,
+                                mime_type="application/octet-stream",
+                            )
+                        )
+                    except Exception:
+                        return genai_types.Part(text=image)
+
+        except Exception as exc:  # pragma: no cover - defensive fallback
+            warnings.warn(f"Failed to convert image payload for Gemini: {exc}")
+
+        return None
+
+    def _gemini_function_declarations(
+        self, tool_schemas: Sequence[dict[str, Any]]
+    ) -> list[genai_types.FunctionDeclaration]:
+        """Convert OpenAI-style tool schemas into Gemini function declarations."""
+
+        declarations: list[genai_types.FunctionDeclaration] = []
+        for schema in tool_schemas:
+            if not isinstance(schema, Mapping):
+                continue
+            if schema.get("type") != "function":
+                continue
+
+            name = schema.get("name")
+            if not isinstance(name, str) or not name:
+                continue
+
+            description = schema.get("description")
+            parameters_payload = schema.get("parameters")
+
+            parameters_schema = None
+            if isinstance(parameters_payload, Mapping):
+                try:
+                    parameters_schema = genai_types.Schema.model_validate(
+                        parameters_payload
+                    )
+                except ValidationError:
+                    parameters_schema = None
+
+            try:
+                declaration = genai_types.FunctionDeclaration(
+                    name=name,
+                    description=description if isinstance(description, str) else None,
+                    parameters=parameters_schema,
+                )
+            except ValidationError:
+                warnings.warn(
+                    f"Skipping function declaration '{name}' due to invalid schema."
+                )
+                continue
+
+            declarations.append(declaration)
+
+        return declarations
+
+    def _handle_gemini_function_calls(
+        self,
+        chat_session: Any,
+        response: genai_types.GenerateContentResponse,
+        tool_map: Mapping[str, types.FunctionType],
+        config: genai_types.GenerateContentConfig,
+    ) -> genai_types.GenerateContentResponse:
+        """Execute requested Gemini function calls until no further calls remain."""
+
+        seen_call_ids: set[str] = set()
+
+        while tool_map:
+            function_calls = response.function_calls()
+            if not function_calls:
+                break
+
+            follow_up_parts: list[genai_types.Part] = []
+            for fn_call in function_calls:
+                if fn_call is None or fn_call.name is None:
+                    continue
+                if fn_call.id and fn_call.id in seen_call_ids:
+                    continue
+
+                func = tool_map.get(fn_call.name)
+                if not func:
+                    continue
+
+                args_payload = fn_call.args or {}
+                try:
+                    serialized_args = json.dumps(args_payload)
+                except TypeError:
+                    serialized_args = json.dumps({})
+
+                try:
+                    output = self._invoke_tool_function(func, serialized_args)
+                except Exception as exc:  # pragma: no cover - surfaced to model
+                    output = json.dumps({"error": str(exc)})
+
+                response_payload = {
+                    "output": output,
+                }
+
+                follow_up_parts.append(
+                    genai_types.Part(
+                        function_response=genai_types.FunctionResponse(
+                            name=fn_call.name,
+                            id=fn_call.id,
+                            response=response_payload,
+                        )
+                    )
+                )
+
+                if fn_call.id:
+                    seen_call_ids.add(fn_call.id)
+
+            if not follow_up_parts:
+                break
+
+            response = chat_session.send_message(follow_up_parts, config=config)
+
+        return response
 
     def _convert_filepath_to_vector(
         self, list_of_files: list[str]
@@ -576,6 +856,165 @@ class Assistant:
                 elif event.type == "response.completed":
                     yield "done"
 
+    def _chat_gemini(
+        self,
+        input: str,
+        conv_id: Any,
+        images: Sequence[Any] | None,
+        max_output_tokens: int | None,
+        store: bool,
+        web_search: bool,
+        code_interpreter: bool,
+        file_search: Sequence[str] | None,
+        file_search_max_searches: int | None,
+        mcp_urls: Sequence[str] | None,
+        tools_required: Literal["none", "auto", "required"],
+        custom_tools: Sequence[types.FunctionType] | None,
+        return_full_response: bool,
+        valid_json: Mapping[str, Any] | None,
+        stream: bool,
+        text_stream: bool,
+    ) -> str | genai_types.GenerateContentResponse | Generator[str, Any, None]:
+        """Gemini-specific chat flow with optional multimodal and tool support."""
+
+        if not self._gclient:
+            raise RuntimeError("Gemini client not initialised.")
+
+        if code_interpreter:
+            warnings.warn("Gemini models do not support the code interpreter tool.", stacklevel=2)
+        if mcp_urls:
+            warnings.warn("MCP URLs are not currently supported for Gemini chats.", stacklevel=2)
+        if file_search_max_searches:
+            warnings.warn(
+                "file_search_max_searches is not supported for Gemini and will be ignored.",
+                stacklevel=2,
+            )
+        if store:
+            warnings.warn(
+                "Persistent conversation storage is not supported for Gemini chats; ignoring 'store'.",
+                stacklevel=2,
+            )
+
+        message_text = input
+        response_schema = valid_json if valid_json else None
+        if valid_json:
+            json_hint = json.dumps(valid_json)
+            message_text = (
+                f"{input}\nRESPOND ONLY IN VALID JSON FORMAT LIKE THIS: {json_hint}"
+            )
+
+        message_parts: list[genai_types.Part] = [
+            genai_types.Part(text=message_text)
+        ]
+
+        if images:
+            for image in images:
+                part = self._convert_image_to_gemini_part(image)
+                if part:
+                    message_parts.append(part)
+
+        uploaded_files: list[genai_types.File] = []
+        if file_search:
+            for path in file_search:
+                if not os.path.exists(path):
+                    raise FileNotFoundError(f"File not found: {path}")
+                upload = self._gclient.files.upload(file=path)
+                uploaded_files.append(upload)
+
+            for resource in uploaded_files:
+                if resource.uri and resource.mime_type:
+                    message_parts.append(
+                        genai_types.Part(
+                            file_data=genai_types.FileData(
+                                file_uri=resource.uri,
+                                mime_type=resource.mime_type,
+                            )
+                        )
+                    )
+
+        builtin_tools = list(self._function_call_list)
+        user_tools = list(custom_tools) if custom_tools else []
+        combined_tools = builtin_tools + user_tools
+        if combined_tools:
+            tool_map, tool_schemas = self._build_tool_map(combined_tools)
+        else:
+            tool_map, tool_schemas = {}, []
+
+        function_declarations = self._gemini_function_declarations(tool_schemas)
+
+        tools: list[genai_types.Tool] = []
+        if function_declarations:
+            tools.append(genai_types.Tool(function_declarations=function_declarations))
+        if web_search:
+            tools.append(genai_types.Tool(google_search=genai_types.GoogleSearch()))
+
+        automatic_function_calling: genai_types.AutomaticFunctionCallingConfig | None = None
+        if tool_map:
+            if tools_required == "none":
+                automatic_function_calling = genai_types.AutomaticFunctionCallingConfig(
+                    disable=True
+                )
+            else:
+                automatic_function_calling = genai_types.AutomaticFunctionCallingConfig(
+                    disable=False
+                )
+        elif tools_required == "required":
+            warnings.warn(
+                "tools_required='required' requested without any tools; continuing without tools.",
+                stacklevel=2,
+            )
+
+        config = self._build_gemini_config(
+            max_output_tokens=max_output_tokens,
+            tools=tools if tools else None,
+            response_schema=response_schema,
+            automatic_function_calling=automatic_function_calling,
+        )
+
+        chat_session = self._resolve_gemini_chat(conv_id)
+
+        if stream and not text_stream:
+            text_stream = True
+
+        if text_stream:
+            if tool_map:
+                raise ValueError(
+                    "Gemini text streaming with function tools is not supported."
+                )
+            stream_iter = chat_session.send_message_stream(message_parts, config=config)
+
+            def generator() -> Generator[str, Any, None]:
+                for chunk in stream_iter:
+                    chunk_text = getattr(chunk, "text", None)
+                    if chunk_text:
+                        yield chunk_text
+                        continue
+                    candidate_content = (
+                        chunk.candidates[0].content
+                        if chunk.candidates and chunk.candidates[0].content
+                        else None
+                    )
+                    if candidate_content and candidate_content.parts:
+                        for part in candidate_content.parts:
+                            text_part = getattr(part, "text", None)
+                            if text_part:
+                                yield text_part
+                yield "done"
+
+            return generator()
+
+        response = chat_session.send_message(message_parts, config=config)
+
+        if tool_map:
+            response = self._handle_gemini_function_calls(
+                chat_session, response, tool_map, config
+            )
+
+        if return_full_response or stream:
+            return response
+
+        return response.text or ""
+
     def chat(
         self,
         input: str,
@@ -641,6 +1080,26 @@ class Assistant:
             `custom_tools` and `self._function_call_list` are merged, deduplicated by schema name,
             and automatically executed until every tool call is satisfied.
         """
+
+        if self._model in get_args(GeminiModels):
+            return self._chat_gemini(
+                input=input,
+                conv_id=conv_id,
+                images=images,
+                max_output_tokens=max_output_tokens,
+                store=store,
+                web_search=web_search,
+                code_interpreter=code_interpreter,
+                file_search=file_search,
+                file_search_max_searches=file_search_max_searches,
+                mcp_urls=mcp_urls,
+                tools_required=tools_required,
+                custom_tools=custom_tools,
+                return_full_response=return_full_response,
+                valid_json=valid_json,
+                stream=stream,
+                text_stream=text_stream,
+            )
 
         conversation_ref: str | None
         if conv_id is True:
@@ -1261,7 +1720,7 @@ class Assistant:
             The helper is intended for type checkers and IDEs; you rarely need to instantiate it directly.
         """
 
-        model: ResponsesModel
+        model: Union[ResponsesModel, GeminiModels]
         system_prompt: str
         temperature: float
         reasoning_effort: Literal["minimal", "low", "medium", "high"]
@@ -1289,6 +1748,9 @@ class Assistant:
             setattr(self, key, value)
         if {"reasoning_effort", "summary_length"} & set(__mass_update_helper):
             self._refresh_reasoning()
+        if {"system_prompt", "temperature"} & set(__mass_update_helper):
+            if self._model in get_args(GeminiModels) and self._gclient:
+                self._gemini_base_config = self._build_gemini_config()
 
 
 if __name__ == "__main__":
