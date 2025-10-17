@@ -20,11 +20,13 @@ from typing import (
     Mapping,
     Sequence,
     TypeAlias,
-    Unpack,
     Union,
-    overload
+    Unpack,
+    get_args,
+    overload,
 )
 
+from gemini_models import GeminiModels
 from openai import OpenAI
 from openai.resources.vector_stores.vector_stores import VectorStores
 from openai.types.conversations.conversation import Conversation
@@ -35,7 +37,6 @@ from openai.types.vector_store import VectorStore
 from playsound3 import playsound
 from syntaxmod import wait_until
 from typing_extensions import TypedDict
-from gemini_models import gemini_models
 
 warnings.filterwarnings("ignore")
 
@@ -108,23 +109,23 @@ class Assistant:
         reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = None,
         summary_length: Literal["auto", "concise", "detailed"] | None = None,
     ) -> None: ...
-    
+
     @overload
     def __init__(
         self,
         api_key: str | None = None,
-        model: ResponsesModel = "chatgpt-4o-latest",
+        model: GeminiModels = "gemini-2.5-flash",
         system_prompt: str = "",
         default_conversation: Conversation | bool = True,
         temperature: float | None = None,
         reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = None,
         summary_length: Literal["auto", "concise", "detailed"] | None = None,
     ) -> None: ...
-    
+
     def __init__(
         self,
         api_key: str | None = None,
-        model: ResponsesModel = "chatgpt-4o-latest",
+        model: Union[ResponsesModel, GeminiModels] = "chatgpt-4o-latest",
         system_prompt: str = "",
         default_conversation: Conversation | bool = True,
         temperature: float | None = None,
@@ -158,33 +159,33 @@ class Assistant:
             constructs a reusable `Reasoning` payload that is automatically applied to every
             `chat` call.
         """
+        if model in get_args(ResponsesModel):
+            resolved_key = api_key or getenv("OPENAI_API_KEY")
+            if not resolved_key:
+                raise ValueError("No API key provided.")
 
-        resolved_key = api_key or getenv("OPENAI_API_KEY")
-        if not resolved_key:
-            raise ValueError("No API key provided.")
+            self._api_key = str(resolved_key)
+            self._model = model
+            self._client = OpenAI(api_key=self._api_key)
+            self._system_prompt = system_prompt
+            self._temperature = temperature
+            self._reasoning_effort = reasoning_effort
+            self._summary_length = summary_length
+            self._reasoning: Reasoning | None = None
 
-        self._api_key = str(resolved_key)
-        self._model = model
-        self._client = OpenAI(api_key=self._api_key)
-        self._system_prompt = system_prompt
-        self._temperature = temperature
-        self._reasoning_effort = reasoning_effort
-        self._summary_length = summary_length
-        self._reasoning: Reasoning | None = None
+            self._function_call_list: list[types.FunctionType] = []
 
-        self._function_call_list: list[types.FunctionType] = []
+            conversation: Conversation | None = None
+            if default_conversation is True:
+                conversation = self._client.conversations.create()
+            elif isinstance(default_conversation, Conversation):
+                conversation = default_conversation
 
-        conversation: Conversation | None = None
-        if default_conversation is True:
-            conversation = self._client.conversations.create()
-        elif isinstance(default_conversation, Conversation):
-            conversation = default_conversation
+            self._conversation = conversation
+            self._conversation_id = getattr(conversation, "id", None)
 
-        self._conversation = conversation
-        self._conversation_id = getattr(conversation, "id", None)
-
-        self._stt: Any = None
-        self._refresh_reasoning()
+            self._stt: Any = None
+            self._refresh_reasoning()
 
     def _refresh_reasoning(self) -> None:
         """Rebuild the reusable Reasoning payload from the current configuration."""
@@ -1187,7 +1188,7 @@ class Assistant:
             "turbo",
             "gpt-4o-transcribe",
             "gpt-4o-mini-transcribe",
-        ] = "base", 
+        ] = "base",
         aggressive: VadAgressiveness = 2,
         chunk_duration_ms: int = 30,
         log_directions: bool = False,
@@ -1283,7 +1284,7 @@ class Assistant:
 
 if __name__ == "__main__":
     bob: Assistant = Assistant(
-        api_key=None, model="gpt-4o", system_prompt="You are a helpful assistant."
+        api_key=None, model="", system_prompt="You are a helpful assistant."
     )
 
     @bob.openai_function

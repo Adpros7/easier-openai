@@ -3,7 +3,7 @@ from binascii import Error
 import os
 from typing import Any, Literal
 from urllib.parse import urlparse
-from easier_openai import Assistant
+from easier_aai import Assistant
 
 
 class Openai_Images(Assistant):
