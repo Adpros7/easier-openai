@@ -35,6 +35,7 @@ from openai.types.vector_store import VectorStore
 from playsound3 import playsound
 from syntaxmod import wait_until
 from typing_extensions import TypedDict
+from gemini_models import gemini_models
 
 warnings.filterwarnings("ignore")
 

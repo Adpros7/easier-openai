@@ -1,6 +1,6 @@
 from typing import TypeAlias, Literal
 
-Gemini_Models: TypeAlias = Literal[
+gemini_models: TypeAlias = Literal[
     "embedding-gecko-001",
     "gemini-2.5-pro-preview-03-25",
     "gemini-2.5-flash-preview-05-20",
