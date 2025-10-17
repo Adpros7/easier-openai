@@ -576,6 +576,7 @@ class Assistant:
         code_interpreter: bool = False,
         file_search: Sequence[str] | None = None,
         file_search_max_searches: int | None = None,
+        mcp_urls: Sequence[str] | None = None,
         tools_required: Literal["none", "auto", "required"] = "auto",
         custom_tools: Sequence[types.FunctionType] | None = None,
         return_full_response: bool = False,
@@ -599,6 +600,7 @@ class Assistant:
             file_search: Iterable of local file paths that should be uploaded and searched
                 against for retrieval-augmented responses.
             file_search_max_searches: Optional maximum search passes for the file-search tool.
+            mcp_urls: Optional sequence of MCP server URLs to expose to the model as MCP tools.
             tools_required: Controls the OpenAI tool choice policy. Use ``"required"`` to force
                 tool execution or ``"none"`` to disable it entirely.
             custom_tools: Sequence of callables decorated via `Assistant.openai_function` whose
@@ -702,6 +704,18 @@ class Assistant:
                     ),
                 }
             )
+
+        if mcp_urls:
+            for index, url in enumerate(mcp_urls, start=1):
+                if not url:
+                    continue
+                params_for_response["tools"].append(
+                    {
+                        "type": "mcp",
+                        "server_url": str(url),
+                        "server_label": f"mcp_server_{index}",
+                    }
+                )
 
         params_for_response = {
             key: value
