@@ -37,6 +37,7 @@ from openai.types.vector_store import VectorStore
 from playsound3 import playsound
 from syntaxmod import wait_until
 from typing_extensions import TypedDict
+from google import genai
 
 warnings.filterwarnings("ignore")
 
@@ -186,6 +187,14 @@ class Assistant:
 
             self._stt: Any = None
             self._refresh_reasoning()
+            
+        elif model in get_args(GeminiModels):
+            self._gclient = genai.Client(api_key=api_key or getenv("GEMINI_API_KEY"))
+            self._model = model
+            self._system_prompt = system_prompt
+            self._temperature = temperature
+            self._reasoning_effort = reasoning_effort
+            self._summary_length = summary_length
 
     def _refresh_reasoning(self) -> None:
         """Rebuild the reusable Reasoning payload from the current configuration."""
