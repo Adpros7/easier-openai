@@ -21,6 +21,8 @@ from typing import (
     Sequence,
     TypeAlias,
     Unpack,
+    Union,
+    overload
 )
 
 from openai import OpenAI
@@ -94,6 +96,30 @@ class Assistant:
         ``assistant.function_call_list``.
     """
 
+    @overload
+    def __init__(
+        self,
+        api_key: str | None = None,
+        model: ResponsesModel = "chatgpt-4o-latest",
+        system_prompt: str = "",
+        default_conversation: Conversation | bool = True,
+        temperature: float | None = None,
+        reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = None,
+        summary_length: Literal["auto", "concise", "detailed"] | None = None,
+    ) -> None: ...
+    
+    @overload
+    def __init__(
+        self,
+        api_key: str | None = None,
+        model: ResponsesModel = "chatgpt-4o-latest",
+        system_prompt: str = "",
+        default_conversation: Conversation | bool = True,
+        temperature: float | None = None,
+        reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = None,
+        summary_length: Literal["auto", "concise", "detailed"] | None = None,
+    ) -> None: ...
+    
     def __init__(
         self,
         api_key: str | None = None,
@@ -1146,7 +1172,7 @@ class Assistant:
             "turbo",
             "gpt-4o-transcribe",
             "gpt-4o-mini-transcribe",
-        ] = "base",
+        ] = "base", 
         aggressive: VadAgressiveness = 2,
         chunk_duration_ms: int = 30,
         log_directions: bool = False,

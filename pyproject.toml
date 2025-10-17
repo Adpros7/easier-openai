@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "easier-openai"
-version = "5.1" # USE SEMANTIC VERSION eg. 6.7.9
+version = "5.11" # USE SEMANTIC VERSION eg. 6.7.9
 description = "Utilities for orchestrating OpenAI chat, tool calling, search, audio, and images from one helper package."
 readme = "README.md"
 requires-python = ">=3.13"
@@ -28,6 +28,7 @@ dependencies = [
     "huggingface-hub",
     "playsound3",
     "pygithub",
+    "google-genai",
 ]
 [project.optional-dependencies]
 
@@ -44,15 +45,4 @@ Issues = "https://github.com/Adpros7/easier-gpt/issues"
 [tool.setuptools]
 packages = ["easier_openai"]
 include-package-data = true
-
-
-
-
-
-
-
-
-
-
-
 

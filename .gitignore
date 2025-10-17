@@ -43,3 +43,4 @@ easier_openai/assistant.py
 testery.py
 import_log.txt
 issues.json
+easier_openai/list_gemini_models.py
