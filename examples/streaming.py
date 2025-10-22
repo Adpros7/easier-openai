@@ -1,4 +1,4 @@
-from easier_ai import Assistant
+from easier_openai import Assistant
 
 assistant = Assistant(None, model="gpt-4o", system_prompt="You are a helpful assistant.")
 

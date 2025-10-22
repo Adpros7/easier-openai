@@ -1,4 +1,4 @@
-from easier_ai import Assistant
+from easier_openai import Assistant
 
 assistant = Assistant(
     api_key=None,

@@ -29,6 +29,7 @@ dependencies = [
     "playsound3",
     "pygithub",
     "google-genai",
+    "pyaudio",
 ]
 [project.optional-dependencies]
 
@@ -45,4 +46,10 @@ Issues = "https://github.com/Adpros7/easier-gpt/issues"
 [tool.setuptools]
 packages = ["easier_openai"]
 include-package-data = true
+
+
+
+
+
+
 

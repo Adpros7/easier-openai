@@ -6,3 +6,4 @@ huggingface-hub
 playsound3
 PyGithub
 google-genai
+pyaudio
