@@ -5,5 +5,6 @@ typing_extensions
 huggingface-hub
 playsound3
 PyGithub
-google-genai
 pyaudio
+websocket-client
+audioop-lts
