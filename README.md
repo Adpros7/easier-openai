@@ -1,3 +1,8 @@
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![python](https://img.shields.io/badge/Python-3.13-3776AB.svg?style=flat&logo=python&logoColor=white)](https://www.python.org) ![Static Badge](https://img.shields.io/badge/AI-OpenAI-white)
+
+
+
+
 # Easier OpenAI
 
 Easier OpenAI wraps the official OpenAI Python SDK so you can drive modern assistants, manage tool selection, search files, and work with speech from one helper package -- all with minimal boilerplate.
