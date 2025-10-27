@@ -8,4 +8,4 @@ PyGithub
 pyaudio
 websocket-client
 audioop-lts
-pyautogui
+ 
