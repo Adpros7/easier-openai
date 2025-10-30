@@ -46,11 +46,9 @@ jobs:
           else
             EVENT_NAME="scheduled"
             ISSUE_TITLE="🔒 Daily Security Alert Summary for ${REPO}"
-            # Fetch all three types
             gh api -H "Accept: application/vnd.github+json" /repos/${OWNER}/${{ github.event.repository.name }}/dependabot/alerts?state=open > dependabot_alerts.json || echo "[]" > dependabot_alerts.json
             gh api -H "Accept: application/vnd.github+json" /repos/${OWNER}/${{ github.event.repository.name }}/code-scanning/alerts?state=open > codescan_alerts.json || echo "[]" > codescan_alerts.json
-            gh api -H "Accept: application/vnd.github+json" /repos/${OWNER}/${{ github.event.repository.name }}/secret-scanning/alerts?state=open > secretscan_alerts.json || echo "[]" > secretscan_alerts.json
-
+            gh.api -H "Accept: application/vnd.github+json" /repos/${OWNER}/${{ github.event.repository.name }}/secret-scanning/alerts?state=open > secretscan_alerts.json || echo "[]" > secretscan_alerts.json
             echo "{ \"dependabot\": $(jq length < dependabot_alerts.json), \"codescan\": $(jq length < codescan_alerts.json), \"secretscan\": $(jq length < secretscan_alerts.json) }" > issue_body.json
           fi
 
@@ -77,5 +75,5 @@ jobs:
           gh api \
             --method POST \
             repos/${REPO}/issues \
-            -f title="${ISSUE_TITLE}" \
-            -f body@"issue_body.md"
+            -F title="${ISSUE_TITLE}" \
+            --input issue_body.md
