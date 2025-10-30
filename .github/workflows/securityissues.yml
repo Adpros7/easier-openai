@@ -1,4 +1,4 @@
-name: Daily Security Alert Check
+name: Daily Security Alert Check (with full alert details)
 
 on:
   schedule:
@@ -16,8 +16,7 @@ permissions:
   security-events: read
 
 env:
-  # full "owner/repo"
-  REPO: ${{ github.repository }}
+  REPO: ${{ github.repository }}        # owner/repo
   OWNER: ${{ github.repository_owner }}
 
 jobs:
@@ -37,64 +36,103 @@ jobs:
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
 
-      - name: Determine source & fetch alerts
+      - name: Determine source & fetch alert lists
         id: fetch
         run: |
-          # ensure clean workspace
+          set -euo pipefail
           rm -f dependabot_alerts.json codescan_alerts.json secretscan_alerts.json issue_body.md
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             EVENT_NAME="manual"
             ISSUE_TITLE="🔒 Manual Security Alert Trigger"
-            # Put the manual input directly into the issue_body (markdown)
+            # manual_details could be JSON or plain text; put into issue body
             printf '%s\n' "${{ github.event.inputs.manual_details }}" > issue_body.md
           else
             EVENT_NAME="scheduled"
             ISSUE_TITLE="🔒 Daily Security Alert Summary for ${REPO}"
 
-            # Fetch Dependabot alerts (may require token with appropriate scopes)
+            # 1) Dependabot alerts list (returns items with `number` that identifies the alert)
             gh api -H "Accept: application/vnd.github+json" \
               /repos/${REPO}/dependabot/alerts?state=open \
               > dependabot_alerts.json || echo "[]" > dependabot_alerts.json
 
-            # Fetch Code scanning alerts
+            # 2) Code scanning alerts list (items include a `number`)
             gh api -H "Accept: application/vnd.github+json" \
               /repos/${REPO}/code-scanning/alerts?state=open \
               > codescan_alerts.json || echo "[]" > codescan_alerts.json
 
-            # Fetch Secret scanning alerts
+            # 3) Secret scanning alerts list (items include an alert number)
             gh api -H "Accept: application/vnd.github+json" \
               /repos/${REPO}/secret-scanning/alerts?state=open \
               > secretscan_alerts.json || echo "[]" > secretscan_alerts.json
 
-            # Build a readable markdown summary file (issue_body.md)
+            # Start readable markdown body
             {
-              echo "### Security summary for ${REPO}"
+              echo "## Security summary for ${REPO}"
               echo
               echo "- Dependabot open alerts: $(jq length < dependabot_alerts.json)"
               echo "- Code scanning open alerts: $(jq length < codescan_alerts.json)"
               echo "- Secret scanning open alerts: $(jq length < secretscan_alerts.json)"
               echo
-              echo "----"
+              echo "---"
               echo
-              echo "#### Dependabot alerts (raw JSON)"
-              echo '```json'
-              jq . < dependabot_alerts.json
-              echo '```'
-              echo
-              echo "#### Code scanning alerts (raw JSON)"
-              echo '```json'
-              jq . < codescan_alerts.json
-              echo '```'
-              echo
-              echo "#### Secret scanning alerts (raw JSON)"
-              echo '```json'
-              jq . < secretscan_alerts.json
-              echo '```'
             } > issue_body.md
+
+            #
+            # For each Dependabot alert: fetch full alert object and append
+            #
+            if [ "$(jq length < dependabot_alerts.json)" -gt 0 ]; then
+              echo "### Dependabot alerts (expanded)" >> issue_body.md
+              for n in $(jq -r '.[].number' dependabot_alerts.json); do
+                echo "" >> issue_body.md
+                echo "#### Dependabot alert #${n}" >> issue_body.md
+                echo '_Raw JSON follows:_\n' >> issue_body.md || true
+                echo '```json' >> issue_body.md
+                # fetch the full alert
+                gh api -H "Accept: application/vnd.github+json" /repos/${REPO}/dependabot/alerts/${n} \
+                  > dependabot_alert_${n}.json || echo "{}" > dependabot_alert_${n}.json
+                jq . dependabot_alert_${n}.json >> issue_body.md
+                echo '```' >> issue_body.md
+              done
+            fi
+
+            #
+            # For each Code Scanning alert: fetch full alert object and append
+            #
+            if [ "$(jq length < codescan_alerts.json)" -gt 0 ]; then
+              echo "### Code scanning alerts (expanded)" >> issue_body.md
+              for n in $(jq -r '.[].number' codescan_alerts.json); do
+                echo "" >> issue_body.md
+                echo "#### Code scanning alert #${n}" >> issue_body.md
+                echo '_Raw JSON follows:_\n' >> issue_body.md || true
+                echo '```json' >> issue_body.md
+                gh api -H "Accept: application/vnd.github+json" /repos/${REPO}/code-scanning/alerts/${n} \
+                  > codescan_alert_${n}.json || echo "{}" > codescan_alert_${n}.json
+                jq . codescan_alert_${n}.json >> issue_body.md
+                echo '```' >> issue_body.md
+              done
+            fi
+
+            #
+            # For each Secret Scanning alert: fetch full alert object and append
+            #
+            if [ "$(jq length < secretscan_alerts.json)" -gt 0 ]; then
+              echo "### Secret scanning alerts (expanded)" >> issue_body.md
+              for n in $(jq -r '.[].number' secretscan_alerts.json); do
+                echo "" >> issue_body.md
+                echo "#### Secret scanning alert #${n}" >> issue_body.md
+                echo '_Raw JSON follows:_\n' >> issue_body.md || true
+                echo '```json' >> issue_body.md
+                gh api -H "Accept: application/vnd.github+json" /repos/${REPO}/secret-scanning/alerts/${n} \
+                  > secretscan_alert_${n}.json || echo "{}" > secretscan_alert_${n}.json
+                jq . secretscan_alert_${n}.json >> issue_body.md
+                echo '```' >> issue_body.md
+              done
+            fi
+
           fi
 
-          # export for later step
+          # export for later
           echo "EVENT_NAME=${EVENT_NAME}" >> $GITHUB_ENV
           echo "ISSUE_TITLE=${ISSUE_TITLE}" >> $GITHUB_ENV
 
@@ -105,16 +143,17 @@ jobs:
           EVENT_NAME: ${{ env.EVENT_NAME }}
           ISSUE_TITLE: ${{ env.ISSUE_TITLE }}
         run: |
-          # Convert the assembled markdown file into a JSON payload safely using jq.
-          # Using --arg with jq ensures proper escaping of newlines/quotes.
+          set -euo pipefail
+
+          # read constructed markdown body
           BODY_CONTENT="$(cat issue_body.md)"
 
+          # build safe JSON payload with jq (handles escaping/newlines properly)
           jq -n --arg title "$ISSUE_TITLE" --arg body "$BODY_CONTENT" \
             '{title: $title, body: $body}' > payload.json
 
-          # Sanity-check payload (optional)
           echo "Payload preview:"
           jq . payload.json
 
-          # POST the payload (reads full JSON from payload.json)
+          # Create the issue
           gh api --method POST repos/${REPO}/issues --input payload.json
