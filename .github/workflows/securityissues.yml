@@ -2,7 +2,7 @@ name: Daily Security Alert Check
 
 on:
   schedule:
-    - cron: '0 1 * * *'     # daily at 01:00 UTC (adjust as needed)
+    - cron: '0 1 * * *'     # runs daily at 01:00 UTC (adjust as you like)
   workflow_dispatch:
     inputs:
       manual_details:
@@ -22,9 +22,8 @@ env:
 jobs:
   check_alerts:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout (for CLI)
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Install GitHub CLI & jq
@@ -46,14 +45,25 @@ jobs:
           else
             EVENT_NAME="scheduled"
             ISSUE_TITLE="🔒 Daily Security Alert Summary for ${REPO}"
-            gh api -H "Accept: application/vnd.github+json" /repos/${OWNER}/${{ github.event.repository.name }}/dependabot/alerts?state=open > dependabot_alerts.json || echo "[]" > dependabot_alerts.json
-            gh api -H "Accept: application/vnd.github+json" /repos/${OWNER}/${{ github.event.repository.name }}/code-scanning/alerts?state=open > codescan_alerts.json || echo "[]" > codescan_alerts.json
-            gh.api -H "Accept: application/vnd.github+json" /repos/${OWNER}/${{ github.event.repository.name }}/secret-scanning/alerts?state=open > secretscan_alerts.json || echo "[]" > secretscan_alerts.json
-            echo "{ \"dependabot\": $(jq length < dependabot_alerts.json), \"codescan\": $(jq length < codescan_alerts.json), \"secretscan\": $(jq length < secretscan_alerts.json) }" > issue_body.json
+            # Dependabot alerts
+            gh api -H "Accept: application/vnd.github+json" \
+               /repos/${OWNER}/${{ github.event.repository.name }}/dependabot/alerts?state=open \
+               > dependabot_alerts.json || echo "[]" > dependabot_alerts.json
+            # Code scanning alerts
+            gh api -H "Accept: application/vnd.github+json" \
+               /repos/${OWNER}/${{ github.event.repository.name }}/code-scanning/alerts?state=open \
+               > codescan_alerts.json || echo "[]" > codescan_alerts.json
+            # Secret scanning alerts
+            gh api -H "Accept: application/vnd.github+json" \
+               /repos/${OWNER}/${{ github.event.repository.name }}/secret-scanning/alerts?state=open \
+               > secretscan_alerts.json || echo "[]" > secretscan_alerts.json
+
+            echo "{ \"dependabot\": $(jq length < dependabot_alerts.json), \"codescan\": $(jq length < codescan_alerts.json), \"secretscan\": $(jq length < secretscan_alerts.json) }" \
+              > issue_body.json
           fi
 
-          echo "EVENT_NAME=$EVENT_NAME" >> $GITHUB_ENV
-          echo "ISSUE_TITLE=$ISSUE_TITLE" >> $GITHUB_ENV
+          echo "EVENT_NAME=${EVENT_NAME}" >> $GITHUB_ENV
+          echo "ISSUE_TITLE=${ISSUE_TITLE}" >> $GITHUB_ENV
 
       - name: Create GitHub Issue
         env:
@@ -62,18 +72,12 @@ jobs:
           EVENT_NAME: ${{ env.EVENT_NAME }}
           ISSUE_TITLE: ${{ env.ISSUE_TITLE }}
         run: |
-          {
-            echo "**Security Event:** ${EVENT_NAME}"
-            echo
-            echo '```json'
-            cat issue_body.json
-            echo '```'
-            echo
-            echo "_This issue was auto-created by a GitHub Actions workflow on ${REPO}._"
-          } > issue_body.md
+          # Prepare a proper JSON payload for creating an issue
+          cat > payload.json <<EOF
+{
+  "title": "${ISSUE_TITLE}",
+  "body": "**Security Event:** ${EVENT_NAME}\n\n\`\`\`json\n$(jq . < issue_body.json)\n\`\`\`\n\n_This issue was auto-created by a GitHub Actions workflow on ${REPO}._"
+}
+EOF
 
-          gh api \
-            --method POST \
-            repos/${REPO}/issues \
-            -F title="${ISSUE_TITLE}" \
-            --input issue_body.md
+          gh api --method POST repos/${REPO}/issues --input payload.json
