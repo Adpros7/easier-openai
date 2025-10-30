@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: '0 1 * * *'     # daily at 01:00 UTC (adjust as needed)
   workflow_dispatch:
+    inputs:
+      manual_details:
+        description: "Optional details or JSON payload for manual run"
+        required: false
+        default: "Triggered manually."
 
 permissions:
   issues: write
@@ -17,6 +22,7 @@ env:
 jobs:
   check_alerts:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout (for CLI)
         uses: actions/checkout@v4
@@ -30,64 +36,46 @@ jobs:
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
 
-      - name: Fetch Dependabot alerts
-        id: dependabot
+      - name: Determine source & fetch alerts
+        id: fetch
         run: |
-          gh api \
-            -H "Accept: application/vnd.github+json" \
-            /repos/${OWNER}/${{ github.event.repository.name }}/dependabot/alerts?state=open \
-            > dependabot_alerts.json || echo "[]">dependabot_alerts.json
-          COUNT_DB=$(jq length < dependabot_alerts.json)
-          echo "DB_COUNT=${COUNT_DB}" >> $GITHUB_ENV
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            EVENT_NAME="manual"
+            ISSUE_TITLE="🔒 Manual Security Alert Trigger"
+            echo "${{ github.event.inputs.manual_details }}" > issue_body.json
+          else
+            EVENT_NAME="scheduled"
+            ISSUE_TITLE="🔒 Daily Security Alert Summary for ${REPO}"
+            # Fetch all three types
+            gh api -H "Accept: application/vnd.github+json" /repos/${OWNER}/${{ github.event.repository.name }}/dependabot/alerts?state=open > dependabot_alerts.json || echo "[]" > dependabot_alerts.json
+            gh api -H "Accept: application/vnd.github+json" /repos/${OWNER}/${{ github.event.repository.name }}/code-scanning/alerts?state=open > codescan_alerts.json || echo "[]" > codescan_alerts.json
+            gh api -H "Accept: application/vnd.github+json" /repos/${OWNER}/${{ github.event.repository.name }}/secret-scanning/alerts?state=open > secretscan_alerts.json || echo "[]" > secretscan_alerts.json
 
-      - name: Fetch CodeScanning alerts
-        id: codescan
-        run: |
-          gh api \
-            -H "Accept: application/vnd.github+json" \
-            /repos/${OWNER}/${{ github.event.repository.name }}/code-scanning/alerts?state=open \
-            > codescan_alerts.json || echo "[]">codescan_alerts.json
-          COUNT_CS=$(jq length < codescan_alerts.json)
-          echo "CS_COUNT=${COUNT_CS}" >> $GITHUB_ENV
+            echo "{ \"dependabot\": $(jq length < dependabot_alerts.json), \"codescan\": $(jq length < codescan_alerts.json), \"secretscan\": $(jq length < secretscan_alerts.json) }" > issue_body.json
+          fi
 
-      - name: Fetch SecretScanning alerts
-        id: secretscan
-        run: |
-          gh api \
-            -H "Accept: application/vnd.github+json" \
-            /repos/${OWNER}/${{ github.event.repository.name }}/secret-scanning/alerts?state=open \
-            > secretscan_alerts.json || echo "[]">secretscan_alerts.json
-          COUNT_SS=$(jq length < secretscan_alerts.json)
-          echo "SS_COUNT=${COUNT_SS}" >> $GITHUB_ENV
+          echo "EVENT_NAME=$EVENT_NAME" >> $GITHUB_ENV
+          echo "ISSUE_TITLE=$ISSUE_TITLE" >> $GITHUB_ENV
 
-      - name: Create issue if any alerts found
-        if: ${{ env.DB_COUNT != '0' || env.CS_COUNT != '0' || env.SS_COUNT != '0' }}
+      - name: Create GitHub Issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ env.EVENT_NAME }}
+          ISSUE_TITLE: ${{ env.ISSUE_TITLE }}
         run: |
-          ISSUE_TITLE="🔒 Security Alerts Summary for ${REPO}"
           {
-            echo "### Summary"
-            echo "- Dependabot alerts: ${DB_COUNT}"
-            echo "- Code Scanning alerts: ${CS_COUNT}"
-            echo "- Secret Scanning alerts: ${SS_COUNT}"
+            echo "**Security Event:** ${EVENT_NAME}"
             echo
-            echo "### Dependabot (open alerts)"
-            jq . < dependabot_alerts.json
+            echo '```json'
+            cat issue_body.json
+            echo '```'
             echo
-            echo "### Code Scanning (open alerts)"
-            jq . < codescan_alerts.json
-            echo
-            echo "### Secret Scanning (open alerts)"
-            jq . < secretscan_alerts.json
-          } > full_alert_report.md
+            echo "_This issue was auto-created by a GitHub Actions workflow on ${REPO}._"
+          } > issue_body.md
 
           gh api \
             --method POST \
-            repos/${OWNER}/${{ github.event.repository.name }}/issues \
+            repos/${REPO}/issues \
             -f title="${ISSUE_TITLE}" \
-            -f body@"full_alert_report.md"
-
-      - name: No alerts found
-        if: ${{ env.DB_COUNT == '0' && env.CS_COUNT == '0' && env.SS_COUNT == '0' }}
-        run: |
-          echo "No open alerts across Dependabot/CodeScanning/SecretScanning for ${REPO}."
-
+            -f body@"issue_body.md"
