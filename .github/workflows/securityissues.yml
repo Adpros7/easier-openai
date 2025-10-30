@@ -1,171 +1,226 @@
-name: Security Alerts to Issues
+name: Daily Security Alert Check (per-alert issues)
 
 on:
   schedule:
-    - cron: "0 1 * * *"    # Run daily at 01:00 UTC
-  workflow_dispatch:       # Allow manual triggering
+    - cron: '0 1 * * *'     # runs daily at 01:00 UTC (adjust as you like)
+  workflow_dispatch:
+    inputs:
+      manual_details:
+        description: "Optional details or JSON payload for manual run"
+        required: false
+        default: "Triggered manually."
 
 permissions:
-  issues: write            # Needed to create issues
-  security-events: read    # Needed to read Dependabot/Code Scanning/Secret alerts
-  contents: read           # (Optional) read access to repo content if needed
+  issues: write
+  contents: read
+  security-events: read
+
+env:
+  REPO: ${{ github.repository }}        # owner/repo
+  OWNER: ${{ github.repository_owner }}
 
 jobs:
-  report_alerts:
+  check_alerts:
     runs-on: ubuntu-latest
 
+    # Provide the token to gh via GITHUB_TOKEN env so gh uses it automatically.
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+      OWNER: ${{ github.repository_owner }}
+
     steps:
-      - name: Checkout repository (optional)
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install GitHub CLI and jq
+      - name: Install GitHub CLI & jq
         run: |
-          sudo apt-get update -y
-          sudo apt-get install -y gh jq
+          sudo apt update
+          sudo apt install -y gh jq
 
-      - name: Authenticate GitHub CLI
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: echo "${GH_TOKEN}" | gh auth login --with-token
+      # NOTE: No gh auth login step. gh will use GITHUB_TOKEN provided above.
 
-      - name: Fetch open security alerts
-        env:
-          REPO: ${{ github.repository }}
+      - name: Determine source & fetch alert lists
+        id: fetch
         run: |
-          # Remove old files if any
-          rm -f dependabot_alerts.json codescan_alerts.json secretscan_alerts.json
-          # Fetch Dependabot alerts (open state)
-          gh api -H "Accept: application/vnd.github+json" "/repos/${REPO}/dependabot/alerts?state=open" \
-            > dependabot_alerts.json || echo "[]" > dependabot_alerts.json
-          # Fetch Code Scanning alerts (open state)
-          gh api -H "Accept: application/vnd.github+json" "/repos/${REPO}/code-scanning/alerts?state=open" \
-            > codescan_alerts.json || echo "[]" > codescan_alerts.json
-          # Fetch Secret Scanning alerts (open state)
-          gh api -H "Accept: application/vnd.github+json" "/repos/${REPO}/secret-scanning/alerts?state=open" \
-            > secretscan_alerts.json || echo "[]" > secretscan_alerts.json
+          set -euo pipefail
+          rm -f dependabot_alerts.json codescan_alerts.json secretscan_alerts.json issue_body.md
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            EVENT_NAME="manual"
+            ISSUE_TITLE="🔒 Manual Security Alert Trigger"
+            printf '%s\n' "${{ github.event.inputs.manual_details }}" > issue_body.md
+            # For manual run we won't create per-alert issues unless the user provides JSON lists.
+            # But we'll export EVENT_NAME/ISSUE_TITLE for the create step below.
+          else
+            EVENT_NAME="scheduled"
+            ISSUE_TITLE="🔒 Daily Security Alert Summary for ${REPO}"
+
+            # Fetch Dependabot alerts (open state)
+            gh api -H "Accept: application/vnd.github+json" "/repos/${REPO}/dependabot/alerts?state=open" \
+              > dependabot_alerts.json || echo "[]" > dependabot_alerts.json
+
+            # Fetch Code scanning alerts (open state)
+            gh api -H "Accept: application/vnd.github+json" "/repos/${REPO}/code-scanning/alerts?state=open" \
+              > codescan_alerts.json || echo "[]" > codescan_alerts.json
+
+            # Fetch Secret scanning alerts (open state)
+            gh api -H "Accept: application/vnd.github+json" "/repos/${REPO}/secret-scanning/alerts?state=open" \
+              > secretscan_alerts.json || echo "[]" > secretscan_alerts.json
+
+            # Build a small summary to keep in issue_body.md if needed
+            {
+              echo "## Security summary for ${REPO}"
+              echo
+              echo "- Dependabot open alerts: $(jq length < dependabot_alerts.json)"
+              echo "- Code scanning open alerts: $(jq length < codescan_alerts.json)"
+              echo "- Secret scanning open alerts: $(jq length < secretscan_alerts.json)"
+              echo
+              echo "---"
+              echo
+            } > issue_body.md
+          fi
+
+          # export for later steps
+          echo "EVENT_NAME=${EVENT_NAME}" >> $GITHUB_ENV
+          echo "ISSUE_TITLE=${ISSUE_TITLE}" >> $GITHUB_ENV
 
       - name: Create issues for Dependabot alerts
+        if: ${{ always() && (github.event_name != 'workflow_dispatch') }}
         env:
-          REPO: ${{ github.repository }}
+          REPO: ${{ env.REPO }}
         run: |
           count=$(jq '. | length' dependabot_alerts.json)
           echo "Found $count Dependabot alerts."
           if [ "$count" -gt 0 ]; then
             jq -c '.[]' dependabot_alerts.json | while IFS= read -r alert; do
-              # Extract fields using jq
               number=$(echo "$alert" | jq -r '.number')
-              summary=$(echo "$alert" | jq -r '.security_advisory.summary')
-              description=$(echo "$alert" | jq -r '.security_advisory.description')
-              severity=$(echo "$alert" | jq -r '.security_vulnerability.severity')
-              package=$(echo "$alert" | jq -r '.security_vulnerability.package.name')
-              ecosystem=$(echo "$alert" | jq -r '.security_vulnerability.package.ecosystem')
-              vuln_range=$(echo "$alert" | jq -r '.security_vulnerability.vulnerable_version_range')
-              patched=$(echo "$alert" | jq -r '.security_vulnerability.first_patched_version.identifier')
-              identifiers=$(echo "$alert" | jq -r '[.security_advisory.identifiers[].value] | join(", ")')
-              html_url=$(echo "$alert" | jq -r '.html_url')
-              # Compose title (max 100 chars, use advisory summary)
-              title="🔒 ${summary}"
+              summary=$(echo "$alert" | jq -r '.security_advisory.summary // empty')
+              description=$(echo "$alert" | jq -r '.security_advisory.description // empty')
+              severity=$(echo "$alert" | jq -r '.security_vulnerability.severity // empty')
+              package=$(echo "$alert" | jq -r '.security_vulnerability.package.name // empty')
+              ecosystem=$(echo "$alert" | jq -r '.security_vulnerability.package.ecosystem // empty')
+              vuln_range=$(echo "$alert" | jq -r '.security_vulnerability.vulnerable_version_range // empty')
+              patched=$(echo "$alert" | jq -r '.security_vulnerability.first_patched_version.identifier // empty')
+              identifiers=$(echo "$alert" | jq -r '[.security_advisory.identifiers[].value] | join(", ")' 2>/dev/null || echo "")
+              html_url=$(echo "$alert" | jq -r '.html_url // empty')
+
+              # Build title (<=100 chars). Prefer summary; fallback to package+severity.
+              if [ -n "$summary" ] && [ "$summary" != "null" ]; then
+                title="🔒 ${summary}"
+              else
+                title="🔒 ${ecosystem}/${package} - ${severity}"
+              fi
               if [ ${#title} -gt 100 ]; then
                 title="${title:0:97}..."
               fi
-              # Check if an issue for this alert exists (search by alert URL or ID)
-              if gh issue list --state open -S "$html_url" -R "${REPO}" | grep -q .; then
+
+              # If an existing open issue references this alert URL, skip creating a duplicate.
+              if [ -n "$html_url" ] && gh issue list -R "${REPO}" --state open -S "$html_url" | grep -q .; then
                 echo "Issue already exists for Dependabot alert #${number}, skipping."
                 continue
               fi
-              # Compose issue body markdown
+
+              # Build issue body with full description + metadata
               {
-                echo "**Dependabot Alert #${number}** - **${severity^^} severity**"
+                echo "**Dependabot Alert #${number}**"
                 echo ""
                 echo "- **Package:** ${ecosystem}/${package}"
-                echo "- **Vulnerable versions:** ${vuln_range}"
-                echo "- **Fixed in:** ${patched:-"Not yet patched"}"
-                if [ -n "$identifiers" ] && [ "$identifiers" != "null" ]; then
-                  echo "- **Identifiers:** ${identifiers}"
-                fi
+                [ -n "$vuln_range" ] && echo "- **Vulnerable versions:** ${vuln_range}"
+                [ -n "$patched" ] && echo "- **Fixed in:** ${patched}" || echo "- **Fixed in:** Not yet patched"
+                [ -n "$severity" ] && echo "- **Severity:** ${severity^^}"
+                [ -n "$identifiers" ] && [ "$identifiers" != "null" ] && echo "- **Identifiers:** ${identifiers}"
                 echo ""
-                echo "${description}"
+                [ -n "$description" ] && echo "${description}" || echo "_No descriptive body available; check the alert link._"
                 echo ""
-                echo "[View alert on GitHub](${html_url})"
+                [ -n "$html_url" ] && echo "[View alert on GitHub](${html_url})"
               } > issue_body.md
-              # Create the GitHub issue
+
+              # Create the issue (gh will use GITHUB_TOKEN automatically)
               gh issue create -R "${REPO}" -t "$title" -F issue_body.md
               echo "Created issue for Dependabot alert #${number}: $title"
             done
           fi
 
       - name: Create issues for Code Scanning alerts
+        if: ${{ always() && (github.event_name != 'workflow_dispatch') }}
         env:
-          REPO: ${{ github.repository }}
+          REPO: ${{ env.REPO }}
         run: |
           count=$(jq '. | length' codescan_alerts.json)
           echo "Found $count code scanning alerts."
           if [ "$count" -gt 0 ]; then
             jq -c '.[]' codescan_alerts.json | while IFS= read -r alert; do
               number=$(echo "$alert" | jq -r '.number')
-              rule_id=$(echo "$alert" | jq -r '.rule.id')
-              rule_desc=$(echo "$alert" | jq -r '.rule.description')
-              severity=$(echo "$alert" | jq -r '.rule.severity')
-              tool=$(echo "$alert" | jq -r '.tool.name')
-              file_path=$(echo "$alert" | jq -r '.most_recent_instance.location.path')
-              html_url=$(echo "$alert" | jq -r '.html_url')
-              title="🔒 ${rule_id}"
+              rule_id=$(echo "$alert" | jq -r '.rule.id // empty')
+              rule_desc=$(echo "$alert" | jq -r '.rule.description // empty')
+              severity=$(echo "$alert" | jq -r '.rule.severity // empty')
+              tool=$(echo "$alert" | jq -r '.tool.name // empty')
+              file_path=$(echo "$alert" | jq -r '.most_recent_instance.location.path // empty')
+              html_url=$(echo "$alert" | jq -r '.html_url // empty')
+
+              title="🔒 ${rule_id:-Code-Scanning}"
               if [ ${#title} -gt 100 ]; then
                 title="${title:0:97}..."
               fi
-              if gh issue list --state open -S "$html_url" -R "${REPO}" | grep -q .; then
+
+              if [ -n "$html_url" ] && gh issue list -R "${REPO}" --state open -S "$html_url" | grep -q .; then
                 echo "Issue already exists for code scanning alert #${number}, skipping."
                 continue
               fi
+
               {
-                echo "**Code Scanning Alert #${number}** - **${severity^^}** (Rule: \`${rule_id}\` by ${tool})"
+                echo "**Code Scanning Alert #${number}** - Rule: \`${rule_id}\`"
                 echo ""
-                echo "- **Rule description:** ${rule_desc}"
-                if [ "$file_path" != "null" ]; then
-                  echo "- **Affected file:** \`${file_path}\`"
-                fi
+                [ -n "$rule_desc" ] && echo "**Description:** ${rule_desc}" || true
+                [ -n "$tool" ] && echo "- **Tool:** ${tool}"
+                [ -n "$severity" ] && echo "- **Severity:** ${severity^^}"
+                [ -n "$file_path" ] && echo "- **Affected file:** \`${file_path}\`"
                 echo ""
-                # Code scanning alerts typically don't have a long description field beyond rule_desc
-                echo "[View alert on GitHub](${html_url})"
+                [ -n "$html_url" ] && echo "[View alert on GitHub](${html_url})"
               } > issue_body.md
+
               gh issue create -R "${REPO}" -t "$title" -F issue_body.md
               echo "Created issue for code scanning alert #${number}: $title"
             done
           fi
 
       - name: Create issues for Secret Scanning alerts
+        if: ${{ always() && (github.event_name != 'workflow_dispatch') }}
         env:
-          REPO: ${{ github.repository }}
+          REPO: ${{ env.REPO }}
         run: |
           count=$(jq '. | length' secretscan_alerts.json)
           echo "Found $count secret scanning alerts."
           if [ "$count" -gt 0 ]; then
             jq -c '.[]' secretscan_alerts.json | while IFS= read -r alert; do
               number=$(echo "$alert" | jq -r '.number')
-              secret_type=$(echo "$alert" | jq -r '.secret_type_display_name')
-              secret_type_code=$(echo "$alert" | jq -r '.secret_type')
-              html_url=$(echo "$alert" | jq -r '.html_url')
-              file_path=$(echo "$alert" | jq -r '.first_location_detected.path')
-              title="🔒 ${secret_type}"
+              secret_type=$(echo "$alert" | jq -r '.secret_type_display_name // empty')
+              secret_type_code=$(echo "$alert" | jq -r '.secret_type // empty')
+              html_url=$(echo "$alert" | jq -r '.html_url // empty')
+              file_path=$(echo "$alert" | jq -r '.first_location_detected.path // empty')
+
+              title="🔒 ${secret_type:-Secret}"
               if [ ${#title} -gt 100 ]; then
                 title="${title:0:97}..."
               fi
-              if gh issue list --state open -S "$html_url" -R "${REPO}" | grep -q .; then
+
+              if [ -n "$html_url" ] && gh issue list -R "${REPO}" --state open -S "$html_url" | grep -q .; then
                 echo "Issue already exists for secret scanning alert #${number}, skipping."
                 continue
               fi
+
               {
-                echo "**Secret Scanning Alert #${number}** - Exposed **${secret_type}**"
+                echo "**Secret Scanning Alert #${number}** - ${secret_type:-Secret}"
                 echo ""
-                if [ "$file_path" != "null" ]; then
-                  echo "- **Detected in file:** \`${file_path}\`"
-                fi
-                echo "- **Secret type code:** ${secret_type_code}"
+                [ -n "$file_path" ] && echo "- **Detected in file:** \`${file_path}\`"
+                [ -n "$secret_type_code" ] && echo "- **Secret type code:** ${secret_type_code}"
                 echo ""
-                echo "This repository contains an exposed **${secret_type}** secret. Please review and remediate this secret as it may compromise security."
+                echo "This repository contains an exposed secret. Please review and remediate."
                 echo ""
-                echo "[View alert on GitHub](${html_url})"
+                [ -n "$html_url" ] && echo "[View alert on GitHub](${html_url})"
               } > issue_body.md
+
               gh issue create -R "${REPO}" -t "$title" -F issue_body.md
               echo "Created issue for secret scanning alert #${number}: $title"
             done
