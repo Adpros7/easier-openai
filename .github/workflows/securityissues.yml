@@ -1,0 +1,67 @@
+name: Create Issue on Security Alert
+
+on:
+  workflow_dispatch:
+    inputs:
+      alert_type:
+        description: "Type of alert (dependabot, code_scanning, secret_scanning)"
+        required: false
+        default: "manual"
+      details:
+        description: "Optional details or JSON payload"
+        required: false
+        default: "Triggered manually."
+  repository_advisory_published:
+  code_scanning_alert:
+    types: [opened, reopened, fixed, dismissed]
+  secret_scanning_alert:
+    types: [created, reopened, resolved, revoked]
+
+permissions:
+  issues: write
+  security-events: read
+  contents: read
+
+jobs:
+  create_issue:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Gather event info
+        id: gather
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            {
+              echo "EVENT_NAME=manual"
+              echo "ISSUE_TITLE=🔒 Manual Security Alert Trigger"
+              echo "ISSUE_BODY=${{ github.event.inputs.details }}"
+            } >> $GITHUB_ENV
+          else
+            ISSUE_JSON=$(jq . < "$GITHUB_EVENT_PATH")
+            {
+              echo "EVENT_NAME=${{ github.event_name }}"
+              echo "ISSUE_TITLE=🔒 Security Alert: ${{ github.event_name }}"
+              echo "ISSUE_BODY<<EOF"
+              echo "$ISSUE_JSON"
+              echo "EOF"
+            } >> $GITHUB_ENV
+          fi
+
+      - name: Create Issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Safely expand ISSUE_BODY with printf to avoid YAML parsing errors
+          ISSUE_TITLE="${{ env.ISSUE_TITLE }}"
+          EVENT_NAME="${{ env.EVENT_NAME }}"
+          printf -v BODY '%s\n' "${{ env.ISSUE_BODY }}"
+
+          gh api repos/${REPO}/issues \
+            -f title="${ISSUE_TITLE}" \
+            -f body="**Security Event:** ${EVENT_NAME}
+
+\`\`\`json
+${BODY}
+\`\`\`
+
+_This issue was auto-created by a GitHub Actions workflow on ${{ github.event.repository.full_name }}._"
