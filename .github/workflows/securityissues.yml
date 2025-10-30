@@ -16,12 +16,14 @@ permissions:
   security-events: read
 
 env:
+  # full "owner/repo"
   REPO: ${{ github.repository }}
   OWNER: ${{ github.repository_owner }}
 
 jobs:
   check_alerts:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -38,46 +40,81 @@ jobs:
       - name: Determine source & fetch alerts
         id: fetch
         run: |
+          # ensure clean workspace
+          rm -f dependabot_alerts.json codescan_alerts.json secretscan_alerts.json issue_body.md
+
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             EVENT_NAME="manual"
             ISSUE_TITLE="🔒 Manual Security Alert Trigger"
-            echo "${{ github.event.inputs.manual_details }}" > issue_body.json
+            # Put the manual input directly into the issue_body (markdown)
+            printf '%s\n' "${{ github.event.inputs.manual_details }}" > issue_body.md
           else
             EVENT_NAME="scheduled"
             ISSUE_TITLE="🔒 Daily Security Alert Summary for ${REPO}"
-            # Dependabot alerts
+
+            # Fetch Dependabot alerts (may require token with appropriate scopes)
             gh api -H "Accept: application/vnd.github+json" \
-              /repos/${OWNER}/${{ github.event.repository.name }}/dependabot/alerts?state=open \
+              /repos/${REPO}/dependabot/alerts?state=open \
               > dependabot_alerts.json || echo "[]" > dependabot_alerts.json
-            # Code scanning alerts
+
+            # Fetch Code scanning alerts
             gh api -H "Accept: application/vnd.github+json" \
-              /repos/${OWNER}/${{ github.event.repository.name }}/code-scanning/alerts?state=open \
+              /repos/${REPO}/code-scanning/alerts?state=open \
               > codescan_alerts.json || echo "[]" > codescan_alerts.json
-            # Secret scanning alerts
+
+            # Fetch Secret scanning alerts
             gh api -H "Accept: application/vnd.github+json" \
-              /repos/${OWNER}/${{ github.event.repository.name }}/secret-scanning/alerts?state=open \
+              /repos/${REPO}/secret-scanning/alerts?state=open \
               > secretscan_alerts.json || echo "[]" > secretscan_alerts.json
 
-            echo "{ \"dependabot\": $(jq length < dependabot_alerts.json), \"codescan\": $(jq length < codescan_alerts.json), \"secretscan\": $(jq length < secretscan_alerts.json) }" \
-              > issue_body.json
+            # Build a readable markdown summary file (issue_body.md)
+            {
+              echo "### Security summary for ${REPO}"
+              echo
+              echo "- Dependabot open alerts: $(jq length < dependabot_alerts.json)"
+              echo "- Code scanning open alerts: $(jq length < codescan_alerts.json)"
+              echo "- Secret scanning open alerts: $(jq length < secretscan_alerts.json)"
+              echo
+              echo "----"
+              echo
+              echo "#### Dependabot alerts (raw JSON)"
+              echo '```json'
+              jq . < dependabot_alerts.json
+              echo '```'
+              echo
+              echo "#### Code scanning alerts (raw JSON)"
+              echo '```json'
+              jq . < codescan_alerts.json
+              echo '```'
+              echo
+              echo "#### Secret scanning alerts (raw JSON)"
+              echo '```json'
+              jq . < secretscan_alerts.json
+              echo '```'
+            } > issue_body.md
           fi
 
+          # export for later step
           echo "EVENT_NAME=${EVENT_NAME}" >> $GITHUB_ENV
           echo "ISSUE_TITLE=${ISSUE_TITLE}" >> $GITHUB_ENV
 
-      - name: Create GitHub Issue
+      - name: Create GitHub Issue (safe JSON payload)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
+          REPO: ${{ env.REPO }}
           EVENT_NAME: ${{ env.EVENT_NAME }}
           ISSUE_TITLE: ${{ env.ISSUE_TITLE }}
         run: |
-          # Prepare a proper JSON payload for creating an issue
-          cat > payload.json <<EOF
-{
-  "title": "${ISSUE_TITLE}",
-  "body": "**Security Event:** ${EVENT_NAME}\n\n\`\`\`json\n$(jq . < issue_body.json)\n\`\`\`\n\n_This issue was auto-created by a GitHub Actions workflow on ${REPO}._"
-}
-EOF
+          # Convert the assembled markdown file into a JSON payload safely using jq.
+          # Using --arg with jq ensures proper escaping of newlines/quotes.
+          BODY_CONTENT="$(cat issue_body.md)"
 
+          jq -n --arg title "$ISSUE_TITLE" --arg body "$BODY_CONTENT" \
+            '{title: $title, body: $body}' > payload.json
+
+          # Sanity-check payload (optional)
+          echo "Payload preview:"
+          jq . payload.json
+
+          # POST the payload (reads full JSON from payload.json)
           gh api --method POST repos/${REPO}/issues --input payload.json
