@@ -157,7 +157,7 @@ class Assistant:
                 conversation = default_conversation
 
             self._conversation = conversation
-            self._conversation_id = getattr(conversation, "id", None)
+            self._conversation_id = self._conversation.id if self._conversation else None
 
             self._stt: Any = None
             self._refresh_reasoning()
@@ -610,7 +610,10 @@ class Assistant:
 
         conversation_ref: str | None
         if conv_id is True:
-            conversation_ref = self._conversation_id
+            # ensure conversation exists
+            if not getattr(self, "_conversation", None):
+                self._conversation = self._client.conversations.create()
+            conversation_ref = getattr(self._conversation, "id", None)
         elif isinstance(conv_id, Conversation):
             conversation_ref = getattr(conv_id, "id", None)
         elif conv_id in (False, None):
@@ -1259,41 +1262,7 @@ class Assistant:
 
 if __name__ == "__main__":
     bob: Assistant = Assistant(
-        api_key=None, model="", system_prompt="You are a helpful assistant."
+        api_key=None, model="chatgpt-4o-latest", system_prompt="You are a helpful assistant."
     )
 
-    @bob.openai_function
-    def say_hi_to_bob():
-        """Says hi to bob.
-
-        Returns:
-            str: "hi bob"
-
-        Example:
-            >>> say_hi_to_bob()  # doctest: +SKIP
-            'hi bob'
-
-        Note:
-            The wrapped function receives the same call signature it declared; only metadata changes.
-
-        Parameters:
-
-        """
-        print("hi bob")
-
-    for response in bob.chat(
-        "say hi to bob", custom_tools=[say_hi_to_bob], text_stream=True
-    ):
-        if response == "done":
-            break
-        else:
-            print(response, end="")
-
-
-
-
-
-
-
-
-
+    print(bob.chat("say hi to bob", web_search=True))
