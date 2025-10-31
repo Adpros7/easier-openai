@@ -134,33 +134,34 @@ class Assistant:
             constructs a reusable `Reasoning` payload that is automatically applied to every
             `chat` call.
         """
-        if model in get_args(ResponsesModel):
-            resolved_key = api_key or getenv("OPENAI_API_KEY")
-            if not resolved_key:
-                raise ValueError("No API key provided.")
+        resolved_key = api_key or getenv("OPENAI_API_KEY")
+        if not resolved_key:
+            raise ValueError("No API key provided.")
 
-            self._api_key = str(resolved_key)
-            self._model = model
-            self._client = OpenAI(api_key=self._api_key)
-            self._system_prompt = system_prompt
-            self._temperature = temperature
-            self._reasoning_effort = reasoning_effort
-            self._summary_length = summary_length
-            self._reasoning: Reasoning | None = None
+        self._api_key = str(resolved_key)
+        self._model = model
+        self._client = OpenAI(api_key=self._api_key)
+        self._system_prompt = system_prompt
+        self._temperature = temperature
+        self._reasoning_effort = reasoning_effort
+        self._summary_length = summary_length
+        self._reasoning: Reasoning | None = None
 
-            self._function_call_list: list[types.FunctionType] = []
+        self._function_call_list: list[types.FunctionType] = []
 
-            conversation: Conversation | None = None
-            if default_conversation is True:
-                conversation = self._client.conversations.create()
-            elif isinstance(default_conversation, Conversation):
-                conversation = default_conversation
+        conversation: Conversation | None = None
+        if default_conversation is True:
+            conversation = self._client.conversations.create()
+        elif isinstance(default_conversation, Conversation):
+            conversation = default_conversation
 
-            self._conversation = conversation
-            self._conversation_id = self._conversation.id if self._conversation else None
+        self._conversation = conversation
+        self._conversation_id = (
+            self._conversation.id if self._conversation else None
+        )
 
-            self._stt: Any = None
-            self._refresh_reasoning()
+        self._stt: Any = None
+        self._refresh_reasoning()
 
     def _refresh_reasoning(self) -> None:
         """Rebuild the reusable Reasoning payload from the current configuration."""
@@ -1262,7 +1263,9 @@ class Assistant:
 
 if __name__ == "__main__":
     bob: Assistant = Assistant(
-        api_key=None, model="chatgpt-4o-latest", system_prompt="You are a helpful assistant."
+        api_key=None,
+        model="chatgpt-4o-latest",
+        system_prompt="You are a helpful assistant.",
     )
 
     print(bob.chat("say hi to bob", web_search=True))
