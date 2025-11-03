@@ -106,6 +106,7 @@ class Assistant:
         temperature: float | None = None,
         reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = None,
         summary_length: Literal["auto", "concise", "detailed"] | None = None,
+        init_headers: Mapping[str, Any] | dict[str, Any] = {},
     ):
         """Initialise the assistant client and, optionally, a default conversation.
 
@@ -157,7 +158,7 @@ class Assistant:
 
         self._api_key = str(resolved_key)
         self._model = model
-        self._client = OpenAI(api_key=self._api_key)
+        self._client = OpenAI(api_key=self._api_key, **init_headers)
         self._system_prompt = system_prompt
         self._temperature = temperature
         self._reasoning_effort = reasoning_effort
@@ -753,8 +754,8 @@ class Assistant:
                 "\nLine Number : ",
                 (
                     e.__traceback__.tb_lineno
-                    if isinstance(e, types.TracebackType)
-                    else 709
+                    if e.__traceback__ is not None
+                    else e.__class__
                 ),
             )  # type: ignore
             returns_flag = False

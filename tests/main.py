@@ -1,6 +1,3 @@
-def main():
-    print("Hello from tests!")
+import openai
 
-
-if __name__ == "__main__":
-    main()
+openai.fine_tuning
