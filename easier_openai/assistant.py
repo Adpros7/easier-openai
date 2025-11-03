@@ -173,9 +173,7 @@ class Assistant:
             conversation = default_conversation
 
         self._conversation = conversation
-        self._conversation_id = (
-            self._conversation.id if self._conversation else None
-        )
+        self._conversation_id = self._conversation.id if self._conversation else None
 
         self._stt: Any = None
         self._refresh_reasoning()
