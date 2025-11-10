@@ -36,6 +36,7 @@ from openai.types.vector_store import VectorStore
 from playsound3 import playsound
 from syntaxmod import wait_until
 from typing_extensions import TypedDict
+from models import AVAILABLE_MODELS
 
 warnings.filterwarnings("ignore")
 
@@ -139,7 +140,7 @@ class Assistant:
         if not resolved_key:
             raise ValueError("No API key provided.")
 
-        assert model in ResponsesModel, "Invalid model identifier."
+        assert model in AVAILABLE_MODELS, "Invalid model identifier."
         assert reasoning_effort in (
             None,
             "minimal",
@@ -1284,4 +1285,4 @@ if __name__ == "__main__":
         system_prompt="You are a helpful assistant.",
     )
 
-    print(bob.chat("say hi to bob", web_search=True))
+    print(bob.chat("say hi to bob"))
