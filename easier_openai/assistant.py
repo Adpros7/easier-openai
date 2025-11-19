@@ -140,23 +140,6 @@ class Assistant:
         if not resolved_key:
             raise ValueError("No API key provided.")
 
-        assert model in AVAILABLE_MODELS, "Invalid model identifier."
-        assert reasoning_effort in (
-            None,
-            "minimal",
-            "low",
-            "medium",
-            "high",
-        ), "Invalid reasoning effort hint."
-        assert summary_length in (
-            None,
-            "auto",
-            "concise",
-            "detailed",
-        ), "Invalid summary length hint."
-
-        assert temperature is None or temperature > 0, "Invalid temperature."
-
         self._api_key = str(resolved_key)
         self._model = model
         self._client = OpenAI(api_key=self._api_key, **init_headers)
