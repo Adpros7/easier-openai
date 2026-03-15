@@ -11,7 +11,6 @@ import tempfile
 import types
 import warnings
 from os import getenv
-from threading import BrokenBarrierError
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -20,10 +19,7 @@ from typing import (
     Mapping,
     Sequence,
     TypeAlias,
-    Union,
     Unpack,
-    get_args,
-    overload,
 )
 
 from openai import OpenAI
@@ -36,7 +32,6 @@ from openai.types.vector_store import VectorStore
 from playsound3 import playsound
 from syntaxmod import wait_until
 from typing_extensions import TypedDict
-from models import AVAILABLE_MODELS
 
 warnings.filterwarnings("ignore")
 
@@ -101,7 +96,7 @@ class Assistant:
     def __init__(
         self,
         api_key: str | None = None,
-        model: ResponsesModel = "chatgpt-4o-latest",
+        model: ResponsesModel = "gpt-5-nano",
         system_prompt: str = "",
         default_conversation: Conversation | bool = True,
         temperature: float | None = None,
@@ -327,7 +322,7 @@ class Assistant:
             },
         }
 
-        func.schema = schema
+        func.schema = schema  # type: ignore
         return func  # type: ignore
 
     def _build_tool_map(
@@ -1268,4 +1263,4 @@ if __name__ == "__main__":
         system_prompt="You are a helpful assistant.",
     )
 
-    print(bob.chat("say hi to bob"))
+    print(bob.speech_to_text(mode="vad", model="base.en", log_directions=True))
