@@ -38,6 +38,7 @@ print(response_text)
 ```
 
 sped-up video. actual time ~1 min:
+
 https://github.com/user-attachments/assets/8d2340ac-e4ac-4163-8ec0-a7a226b6d1b6
 
 ## Tool Calling Made Simple
