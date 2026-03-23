@@ -556,7 +556,7 @@ class Assistant:
         valid_json: Mapping[str, Any] | None = None,
         stream: bool = False,
         text_stream: bool = False,
-    ) -> str | Generator[str, Any, None] | Response:
+    ) -> str | Generator[str, Any, None] | Response:  # type: ignore
         """Send a chat request, optionally enabling tools, retrieval, or streaming output.
 
         Args:
@@ -717,46 +717,32 @@ class Assistant:
         stream_gen: Generator[str, Any, None] | None = None
         returns_flag = True
 
-        try:
-            request_params = dict(params_for_response)
-            if "tools" in request_params:
-                request_params["tools"] = list(request_params["tools"])
+        request_params = dict(params_for_response)
+        if "tools" in request_params:
+            request_params["tools"] = list(request_params["tools"])
 
-            if text_stream:
-                stream_gen = self._function_call_stream(request_params, tool_map)
-            else:
-                resp = self._resolve_response_with_tools(request_params, tool_map)
+        if text_stream:
+            stream_gen = self._function_call_stream(request_params, tool_map)
+        else:
+            resp = self._resolve_response_with_tools(request_params, tool_map)
 
-        except Exception as e:
-            print("Error creating response: \n", e)
-            print(
-                "\nLine Number : ",
-                (
-                    e.__traceback__.tb_lineno
-                    if e.__traceback__ is not None
-                    else e.__class__
-                ),
-            )  # type: ignore
-            returns_flag = False
+        if text_stream:
+            return (
+                stream_gen
+                if stream_gen is not None
+                else self._text_stream_generator(params_for_response)
+            )
 
-        finally:
-            if text_stream:
-                return (
-                    stream_gen
-                    if stream_gen is not None
-                    else self._text_stream_generator(params_for_response)
-                )
+        if store and returns_flag and resp is not None:
+            self._conversation = resp.conversation
 
-            if store and returns_flag and resp is not None:
-                self._conversation = resp.conversation
+        if vector_bundle:
+            vector_bundle[2].delete(vector_bundle[0].id)
 
-            if vector_bundle:
-                vector_bundle[2].delete(vector_bundle[0].id)
-
-            if returns_flag:
-                if return_full_response or stream:
-                    return resp  # type: ignore
-                return resp.output_text if resp is not None else ""
+        if returns_flag:
+            if return_full_response or stream:
+                return resp  # type: ignore
+            return resp.output_text if resp is not None else ""
 
             return ""
 
