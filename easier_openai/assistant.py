@@ -348,6 +348,31 @@ class Assistant:
 
         return tool_map, schemas
 
+    def _prepare_function_tools(
+        self, tools: list[types.FunctionType]
+    ) -> tuple[list[dict[str, Any]], dict[str, types.FunctionType]]:
+        """Auto-decorate tools if needed, then return ``(schemas, tool_map)``.
+
+        Unlike ``_build_tool_map``, this method applies ``openai_function`` to any
+        callable that does not already carry a ``schema`` attribute, so callers can
+        pass plain functions without pre-decorating them.
+
+        Args:
+            tools: Callables to prepare — decorated or plain.
+
+        Returns:
+            tuple[list, dict]: A pair of ``(schemas, tool_map)`` where ``schemas``
+            is the list ready to send to the API and ``tool_map`` maps names to
+            callables for local execution.
+        """
+        decorated: list[types.FunctionType] = []
+        for tool in tools:
+            if not hasattr(tool, "schema"):
+                tool = self.openai_function(tool)
+            decorated.append(tool)
+        tool_map, schemas = self._build_tool_map(decorated)
+        return schemas, tool_map
+
     def _format_tool_result(self, result: Any) -> str:
         """Serialize tool results into a string payload for the API."""
 
@@ -706,7 +731,7 @@ class Assistant:
         user_tools = list(custom_tools) if custom_tools else []
         combined_tools = builtin_tools + user_tools
         if combined_tools:
-            tool_map, tool_schemas = self._build_tool_map(combined_tools)
+            tool_schemas, tool_map = self._prepare_function_tools(combined_tools)
         else:
             tool_map, tool_schemas = {}, []
 

@@ -2,7 +2,6 @@ import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-
 from easier_openai.assistant import Assistant
 
 
@@ -11,21 +10,23 @@ def make_assistant() -> Assistant:
 
     Example:
         >>> assistant = make_assistant()
-        >>> assistant.model
+        >>> assistant._model
         'test-model'
     """
     assistant = Assistant.__new__(Assistant)
-    assistant.system_prompt = ""
-    assistant.model = "test-model"
-    assistant.reasoning = None
-    assistant.conversation_id = "conv_test"
-    assistant.conversation = None
-    assistant.client = SimpleNamespace(responses=MagicMock())
+    assistant._system_prompt = ""
+    assistant._model = "test-model"
+    assistant._reasoning = None
+    assistant._temperature = None
+    assistant._conversation_id = "conv_test"
+    assistant._conversation = SimpleNamespace(id="conv_test")
+    assistant._function_call_list = []
+    assistant._client = SimpleNamespace(responses=MagicMock())
     return assistant
 
 
 def test_prepare_function_tools_generates_schema_and_map():
-    """Ensure tool preparation builds the schema and lookup table for supplied callables.
+    """Ensure tool preparation auto-decorates callables and builds schema + lookup table.
 
     Example:
         >>> assistant = make_assistant()
@@ -61,43 +62,36 @@ def test_prepare_function_tools_generates_schema_and_map():
     assert hasattr(describe_city, "schema")
 
 
-def test_submit_tool_outputs_until_complete_executes_tools_and_returns_final_response():
-    """The helper should execute tool calls until the API indicates a completed response.
+def test_resolve_response_with_tools_executes_tools_and_returns_final_response():
+    """The helper should execute tool calls until all function calls are fulfilled.
 
     Example:
         >>> assistant = make_assistant()
-        >>> callable(assistant._submit_tool_outputs_until_complete)  # doctest: +ELLIPSIS
+        >>> callable(assistant._resolve_response_with_tools)
         True
     """
     assistant = make_assistant()
 
-    tool_call = SimpleNamespace(
-        id="call_1",
-        function=SimpleNamespace(
-            name="describe_city", arguments=json.dumps({"city": "Paris"})
-        ),
-    )
-
-    required_action = SimpleNamespace(
-        type="submit_tool_outputs",
-        submit_tool_outputs=SimpleNamespace(tool_calls=[tool_call]),
+    func_call_item = SimpleNamespace(
+        type="function_call",
+        name="describe_city",
+        arguments=json.dumps({"city": "Paris"}),
+        call_id="call_1",
     )
 
     initial_response = SimpleNamespace(
-        status="requires_action",
-        required_action=required_action,
-        id="resp_1",
+        output=[func_call_item],
+        output_text="",
+        conversation=SimpleNamespace(id="conv_test"),
     )
 
     final_response = SimpleNamespace(
-        status="completed",
-        required_action=None,
+        output=[],
         output_text="done",
+        conversation=SimpleNamespace(id="conv_test"),
     )
 
-    assistant.client.responses.submit_tool_outputs = MagicMock(
-        return_value=final_response
-    )
+    assistant._client.responses.create.side_effect = [initial_response, final_response]
 
     def describe_city(city: str) -> dict:
         """Return a simple city payload for testing tool execution.
@@ -108,22 +102,35 @@ def test_submit_tool_outputs_until_complete_executes_tools_and_returns_final_res
         """
         return {"city": city}
 
-    result = assistant._submit_tool_outputs_until_complete(
-        initial_response,
-        {"describe_city": describe_city},
+    describe_city = assistant.openai_function(describe_city)
+
+    params = {
+        "model": "test-model",
+        "input": [
+            {"role": "user", "content": [{"type": "input_text", "text": "Hello"}]}
+        ],
+        "conversation": "conv_test",
+        "tools": [describe_city.schema],
+    }
+
+    result = assistant._resolve_response_with_tools(
+        params, {"describe_city": describe_city}
     )
 
-    assistant.client.responses.submit_tool_outputs.assert_called_once()
-    call_kwargs = assistant.client.responses.submit_tool_outputs.call_args.kwargs
-    assert call_kwargs["response_id"] == "resp_1"
-    assert call_kwargs["tool_outputs"] == [
-        {"tool_call_id": "call_1", "output": json.dumps({"city": "Paris"})}
-    ]
     assert result is final_response
+    assert assistant._client.responses.create.call_count == 2
+    second_call_kwargs = assistant._client.responses.create.call_args_list[1].kwargs
+    assert second_call_kwargs["input"] == [
+        {
+            "type": "function_call_output",
+            "call_id": "call_1",
+            "output": json.dumps({"city": "Paris"}),
+        }
+    ]
 
 
 def test_chat_flows_through_function_calling_cycle():
-    """Verify the chat flow triggers tool execution and finalizes with the streamed response.
+    """Verify the chat flow triggers tool execution and finalizes with the response.
 
     Example:
         >>> assistant = make_assistant()
@@ -131,7 +138,6 @@ def test_chat_flows_through_function_calling_cycle():
         True
     """
     assistant = make_assistant()
-    assistant.client.responses.stream = MagicMock()
 
     captured = {}
 
@@ -145,45 +151,40 @@ def test_chat_flows_through_function_calling_cycle():
         captured["city"] = city
         return {"city": city.title()}
 
-    tool_call = SimpleNamespace(
-        id="call_1",
-        function=SimpleNamespace(
-            name="describe_city", arguments=json.dumps({"city": "paris"})
-        ),
-    )
-
-    required_action = SimpleNamespace(
-        type="submit_tool_outputs",
-        submit_tool_outputs=SimpleNamespace(tool_calls=[tool_call]),
+    func_call_item = SimpleNamespace(
+        type="function_call",
+        name="describe_city",
+        arguments=json.dumps({"city": "paris"}),
+        call_id="call_1",
     )
 
     initial_response = SimpleNamespace(
-        status="requires_action",
-        required_action=required_action,
-        id="resp_1",
+        output=[func_call_item],
         output_text="",
-        conversation="conv_result",
+        conversation=SimpleNamespace(id="conv_test"),
     )
 
     final_response = SimpleNamespace(
-        status="completed",
-        required_action=None,
+        output=[],
         output_text="Paris is lovely.",
-        conversation="conv_result",
+        conversation=SimpleNamespace(id="conv_test"),
     )
 
-    assistant.client.responses.create.return_value = initial_response
-    assistant.client.responses.submit_tool_outputs.return_value = final_response
+    assistant._client.responses.create.side_effect = [initial_response, final_response]
 
     result = assistant.chat("Tell me about Paris", custom_tools=[describe_city])
 
     assert result == "Paris is lovely."
-    assistant.client.responses.create.assert_called_once()
-    tools_arg = assistant.client.responses.create.call_args.kwargs["tools"]
+    assert assistant._client.responses.create.call_count == 2
+    first_call_kwargs = assistant._client.responses.create.call_args_list[0].kwargs
+    tools_arg = first_call_kwargs["tools"]
     assert tools_arg and tools_arg[0]["name"] == "describe_city"
-    submit_kwargs = assistant.client.responses.submit_tool_outputs.call_args.kwargs
-    assert submit_kwargs["response_id"] == "resp_1"
-    assert json.loads(submit_kwargs["tool_outputs"][0]["output"]) == {
-        "city": "Paris"
-    }
+    second_call_kwargs = assistant._client.responses.create.call_args_list[1].kwargs
+    assert second_call_kwargs["input"] == [
+        {
+            "type": "function_call_output",
+            "call_id": "call_1",
+            "output": json.dumps({"city": "Paris"}),
+        }
+    ]
     assert captured["city"] == "paris"
