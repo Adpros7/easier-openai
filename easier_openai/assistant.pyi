@@ -7,17 +7,17 @@ from typing import (
     Generator,
     Literal,
     Mapping,
+    overload,
     Sequence,
     TypeAlias,
     Unpack,
-    overload,
 )
 
 from openai.resources.vector_stores.vector_stores import VectorStores
 from openai.types.conversations.conversation import Conversation
 from openai.types.responses.response import Response
 from openai.types.responses.response_function_tool_call import ResponseFunctionToolCall
-from openai.types.shared_params import Reasoning, ResponsesModel
+from openai.types.shared_params import ResponsesModel
 from openai.types.vector_store import VectorStore
 from typing_extensions import TypedDict
 
@@ -117,7 +117,6 @@ class Assistant:
     def chat(
         self,
         input: str,
-        *,
         conv_id: str | Conversation | None | bool = ...,
         images: Sequence[Openai_Images] | None = ...,
         max_output_tokens: int | None = ...,
@@ -132,7 +131,7 @@ class Assistant:
         return_full_response: bool = ...,
         valid_json: Mapping[str, Any] | None = ...,
         stream: bool = ...,
-        text_stream: Literal[True],
+        text_stream: Literal[True] = ...,
     ) -> Generator[str, Any, None]: ...
 
     # return_full_response=True  →  Response
@@ -140,7 +139,6 @@ class Assistant:
     def chat(
         self,
         input: str,
-        *,
         conv_id: str | Conversation | None | bool = ...,
         images: Sequence[Openai_Images] | None = ...,
         max_output_tokens: int | None = ...,
@@ -152,7 +150,7 @@ class Assistant:
         mcp_urls: Sequence[str] | None = ...,
         tools_required: Literal["none", "auto", "required"] = ...,
         custom_tools: Sequence[types.FunctionType] | None = ...,
-        return_full_response: Literal[True],
+        return_full_response: Literal[True] = ...,
         valid_json: Mapping[str, Any] | None = ...,
         stream: bool = ...,
         text_stream: Literal[False] = ...,
@@ -163,7 +161,6 @@ class Assistant:
     def chat(
         self,
         input: str,
-        *,
         conv_id: str | Conversation | None | bool = ...,
         images: Sequence[Openai_Images] | None = ...,
         max_output_tokens: int | None = ...,
@@ -177,7 +174,7 @@ class Assistant:
         custom_tools: Sequence[types.FunctionType] | None = ...,
         return_full_response: Literal[False] = ...,
         valid_json: Mapping[str, Any] | None = ...,
-        stream: Literal[True],
+        stream: Literal[True] = ...,
         text_stream: Literal[False] = ...,
     ) -> Response: ...
 
@@ -186,7 +183,6 @@ class Assistant:
     def chat(
         self,
         input: str,
-        *,
         conv_id: str | Conversation | None | bool = ...,
         images: Sequence[Openai_Images] | None = ...,
         max_output_tokens: int | None = ...,
@@ -209,9 +205,9 @@ class Assistant:
     # ------------------------------------------------------------------
 
     @overload
-    def create_conversation(self, *, return_id_only: Literal[True]) -> str: ...
+    def create_conversation(self, return_id_only: Literal[True]) -> str: ...
     @overload
-    def create_conversation(self, *, return_id_only: Literal[False] = ...) -> Conversation: ...
+    def create_conversation(self, return_id_only: Literal[False] = ...) -> Conversation: ...
 
     # ------------------------------------------------------------------
     # image_generation – overloaded on return_base64 / make_file
@@ -237,7 +233,7 @@ class Assistant:
         save_to_file: str = ...,
     ) -> str: ...
 
-    # make_file=True  →  None
+    # make_file=True, return_base64=False  →  None
     @overload
     def image_generation(
         self,
@@ -252,8 +248,8 @@ class Assistant:
         n: int = ...,
         moderation: Literal["auto", "low"] | None = ...,
         style: Literal["vivid", "natural"] | None = ...,
-        return_base64: bool = ...,
-        make_file: Literal[True],
+        return_base64: Literal[False] = ...,
+        make_file: Literal[True] = ...,
         save_to_file: str = ...,
     ) -> None: ...
 
