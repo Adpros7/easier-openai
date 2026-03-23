@@ -114,28 +114,104 @@ class Assistant:
 
     # text_stream=True  →  Generator
     @overload
-    def chat(self, input: str, *args: Any, text_stream: Literal[True], **kwargs: Any) -> Generator[str, Any, None]: ...
+    def chat(
+        self,
+        input: str,
+        *,
+        conv_id: str | Conversation | None | bool = ...,
+        images: Sequence[Openai_Images] | None = ...,
+        max_output_tokens: int | None = ...,
+        store: bool = ...,
+        web_search: bool = ...,
+        code_interpreter: bool = ...,
+        file_search: Sequence[str] | None = ...,
+        file_search_max_searches: int | None = ...,
+        mcp_urls: Sequence[str] | None = ...,
+        tools_required: Literal["none", "auto", "required"] = ...,
+        custom_tools: Sequence[types.FunctionType] | None = ...,
+        return_full_response: bool = ...,
+        valid_json: Mapping[str, Any] | None = ...,
+        stream: bool = ...,
+        text_stream: Literal[True],
+    ) -> Generator[str, Any, None]: ...
 
     # return_full_response=True  →  Response
     @overload
-    def chat(self, input: str, *args: Any, return_full_response: Literal[True], **kwargs: Any) -> Response: ...
+    def chat(
+        self,
+        input: str,
+        *,
+        conv_id: str | Conversation | None | bool = ...,
+        images: Sequence[Openai_Images] | None = ...,
+        max_output_tokens: int | None = ...,
+        store: bool = ...,
+        web_search: bool = ...,
+        code_interpreter: bool = ...,
+        file_search: Sequence[str] | None = ...,
+        file_search_max_searches: int | None = ...,
+        mcp_urls: Sequence[str] | None = ...,
+        tools_required: Literal["none", "auto", "required"] = ...,
+        custom_tools: Sequence[types.FunctionType] | None = ...,
+        return_full_response: Literal[True],
+        valid_json: Mapping[str, Any] | None = ...,
+        stream: bool = ...,
+        text_stream: Literal[False] = ...,
+    ) -> Response: ...
 
     # stream=True  →  Response
     @overload
-    def chat(self, input: str, *args: Any, stream: Literal[True], **kwargs: Any) -> Response: ...
+    def chat(
+        self,
+        input: str,
+        *,
+        conv_id: str | Conversation | None | bool = ...,
+        images: Sequence[Openai_Images] | None = ...,
+        max_output_tokens: int | None = ...,
+        store: bool = ...,
+        web_search: bool = ...,
+        code_interpreter: bool = ...,
+        file_search: Sequence[str] | None = ...,
+        file_search_max_searches: int | None = ...,
+        mcp_urls: Sequence[str] | None = ...,
+        tools_required: Literal["none", "auto", "required"] = ...,
+        custom_tools: Sequence[types.FunctionType] | None = ...,
+        return_full_response: Literal[False] = ...,
+        valid_json: Mapping[str, Any] | None = ...,
+        stream: Literal[True],
+        text_stream: Literal[False] = ...,
+    ) -> Response: ...
 
     # default — all flags omitted/False  →  str
     @overload
-    def chat(self, input: str, *args: Any, **kwargs: Any) -> str: ...
+    def chat(
+        self,
+        input: str,
+        *,
+        conv_id: str | Conversation | None | bool = ...,
+        images: Sequence[Openai_Images] | None = ...,
+        max_output_tokens: int | None = ...,
+        store: bool = ...,
+        web_search: bool = ...,
+        code_interpreter: bool = ...,
+        file_search: Sequence[str] | None = ...,
+        file_search_max_searches: int | None = ...,
+        mcp_urls: Sequence[str] | None = ...,
+        tools_required: Literal["none", "auto", "required"] = ...,
+        custom_tools: Sequence[types.FunctionType] | None = ...,
+        return_full_response: Literal[False] = ...,
+        valid_json: Mapping[str, Any] | None = ...,
+        stream: Literal[False] = ...,
+        text_stream: Literal[False] = ...,
+    ) -> str: ...
 
     # ------------------------------------------------------------------
     # create_conversation – overloaded on return_id_only
     # ------------------------------------------------------------------
 
     @overload
-    def create_conversation(self, *args: Any, return_id_only: Literal[True], **kwargs: Any) -> str: ...
+    def create_conversation(self, *, return_id_only: Literal[True]) -> str: ...
     @overload
-    def create_conversation(self, *args: Any, **kwargs: Any) -> Conversation: ...
+    def create_conversation(self, *, return_id_only: Literal[False] = ...) -> Conversation: ...
 
     # ------------------------------------------------------------------
     # image_generation – overloaded on return_base64 / make_file
@@ -143,15 +219,63 @@ class Assistant:
 
     # return_base64=True  →  str
     @overload
-    def image_generation(self, prompt: str, *args: Any, return_base64: Literal[True], **kwargs: Any) -> str: ...
+    def image_generation(
+        self,
+        prompt: str,
+        *,
+        model: Literal["gpt-image-1", "dall-e-2", "dall-e-3"] = ...,
+        background: Literal["transparent", "opaque", "auto"] | None = ...,
+        output_format: Literal["webp", "png", "jpeg"] = ...,
+        output_compression: int | None = ...,
+        quality: Literal["standard", "hd", "low", "medium", "high", "auto"] | None = ...,
+        size: Literal["auto", "1024x1024", "1536x1024", "1024x1536", "256x256", "512x512", "1792x1024", "1024x1792"] | None = ...,
+        n: int = ...,
+        moderation: Literal["auto", "low"] | None = ...,
+        style: Literal["vivid", "natural"] | None = ...,
+        return_base64: Literal[True],
+        make_file: bool = ...,
+        save_to_file: str = ...,
+    ) -> str: ...
 
     # make_file=True  →  None
     @overload
-    def image_generation(self, prompt: str, *args: Any, make_file: Literal[True], **kwargs: Any) -> None: ...
+    def image_generation(
+        self,
+        prompt: str,
+        *,
+        model: Literal["gpt-image-1", "dall-e-2", "dall-e-3"] = ...,
+        background: Literal["transparent", "opaque", "auto"] | None = ...,
+        output_format: Literal["webp", "png", "jpeg"] = ...,
+        output_compression: int | None = ...,
+        quality: Literal["standard", "hd", "low", "medium", "high", "auto"] | None = ...,
+        size: Literal["auto", "1024x1024", "1536x1024", "1024x1536", "256x256", "512x512", "1792x1024", "1024x1792"] | None = ...,
+        n: int = ...,
+        moderation: Literal["auto", "low"] | None = ...,
+        style: Literal["vivid", "natural"] | None = ...,
+        return_base64: bool = ...,
+        make_file: Literal[True],
+        save_to_file: str = ...,
+    ) -> None: ...
 
     # default  →  str | None
     @overload
-    def image_generation(self, prompt: str, *args: Any, **kwargs: Any) -> str | None: ...
+    def image_generation(
+        self,
+        prompt: str,
+        *,
+        model: Literal["gpt-image-1", "dall-e-2", "dall-e-3"] = ...,
+        background: Literal["transparent", "opaque", "auto"] | None = ...,
+        output_format: Literal["webp", "png", "jpeg"] = ...,
+        output_compression: int | None = ...,
+        quality: Literal["standard", "hd", "low", "medium", "high", "auto"] | None = ...,
+        size: Literal["auto", "1024x1024", "1536x1024", "1024x1536", "256x256", "512x512", "1792x1024", "1024x1792"] | None = ...,
+        n: int = ...,
+        moderation: Literal["auto", "low"] | None = ...,
+        style: Literal["vivid", "natural"] | None = ...,
+        return_base64: bool = ...,
+        make_file: bool = ...,
+        save_to_file: str = ...,
+    ) -> str | None: ...
 
     # ------------------------------------------------------------------
     # update_assistant
