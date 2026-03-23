@@ -170,16 +170,15 @@ class Assistant:
 
     def _convert_filepath_to_vector(
         self, list_of_files: list[str]
-    ) -> tuple[VectorStore, VectorStore, VectorStores]:
+    ) -> tuple[VectorStore, VectorStores]:
         """Upload local files into a fresh vector store.
 
         Args:
             list_of_files: Absolute or relative file paths that will seed the store.
 
         Returns:
-            tuple[VectorStore, VectorStore, VectorStores]: The created store summary,
-            a retrieved store instance, and the vector store manager reference for
-            follow-up operations.
+            tuple[VectorStore, VectorStores]: The created store and the vector store
+            manager reference for follow-up operations such as deletion.
 
         Raises:
             ValueError: If the provided file list is empty.
@@ -187,8 +186,8 @@ class Assistant:
 
         Example:
             >>> assistant = Assistant(api_key=\"sk-test\")  # doctest: +SKIP
-            >>> summary, retrieved, manager = assistant._convert_filepath_to_vector([\"docs/guide.md\"])  # doctest: +SKIP
-            >>> summary.name  # doctest: +SKIP
+            >>> store, manager = assistant._convert_filepath_to_vector([\"docs/guide.md\"])  # doctest: +SKIP
+            >>> store.name  # doctest: +SKIP
             'vector_store'
 
         Note:
@@ -200,15 +199,13 @@ class Assistant:
             if not os.path.exists(filepath):
                 raise FileNotFoundError(f"File not found: {filepath}")
 
-        vector_store_create = self._client.vector_stores.create(name="vector_store")
-        vector_store = self._client.vector_stores.retrieve(vector_store_create.id)
-        vector = self._client.vector_stores
+        vector_store = self._client.vector_stores.create(name="vector_store")
         for filepath in list_of_files:
             with open(filepath, "rb") as f:
                 self._client.vector_stores.files.upload_and_poll(
-                    vector_store_id=vector_store_create.id, file=f
+                    vector_store_id=vector_store.id, file=f
                 )
-        return vector_store_create, vector_store, vector
+        return vector_store, self._client.vector_stores
 
     def openai_function(self, func: types.FunctionType) -> types.FunctionType:
         """
@@ -691,13 +688,13 @@ class Assistant:
                 {"type": "code_interpreter", "container": {"type": "auto"}}
             )
 
-        vector_bundle: tuple[VectorStore, VectorStore, VectorStores] | None = None
+        vector_bundle: tuple[VectorStore, VectorStores] | None = None
         if file_search:
             vector_bundle = self._convert_filepath_to_vector(list(file_search))
             params_for_response["tools"].append(
                 {
                     "type": "file_search",
-                    "vector_store_ids": vector_bundle[1].id,
+                    "vector_store_ids": [vector_bundle[0].id],
                     **(
                         {}
                         if file_search_max_searches is None
@@ -762,7 +759,7 @@ class Assistant:
             self._conversation = resp.conversation
 
         if vector_bundle:
-            vector_bundle[2].delete(vector_bundle[0].id)
+            vector_bundle[1].delete(vector_bundle[0].id)
 
         if returns_flag:
             if return_full_response or stream:
