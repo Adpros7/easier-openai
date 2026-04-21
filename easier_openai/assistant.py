@@ -1052,6 +1052,13 @@ class Assistant:
         if response_format != "wav" and play:
             print("Only wav format is supported for playing audio")
 
+        with tempfile.NamedTemporaryFile(
+            delete=False, suffix="." + response_format, delete_on_close=True
+        ) as f:
+            respo.write_to_file(f.name)
+            f.flush()
+            return f.read()
+
     def full_text_to_speech(
         self,
         input: str,
