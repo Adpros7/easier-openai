@@ -1,7 +1,26 @@
 [project]
 name = "easier-openai"
-version = "0.1.0"
-description = "Add your description here"
+version = "8" # USE SEMANTIC VERSION eg. 6.7.9
+description = ""
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.13"
+license = "Apache-2.0"
+authors = [
+  { name = "Advik Mathur", email = "pranit.advik@gmail.com" }
+]
+keywords = ["openai", "assistant", "chat", "responses", "audio", "images", "vector", "speech"]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Libraries :: Python Modules"
+]
 dependencies = []
+
+
+[project.urls]
+Homepage = "https://github.com/Adpros7/easier-openai"
+Repository = "https://github.com/Adpros7/easier-openai"
+Documentation = "https://github.com/Adpros7/easier-openai"
+Issues = "https://github.com/Adpros7/easier-openai/issues"
