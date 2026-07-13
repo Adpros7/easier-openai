@@ -16,7 +16,9 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
   "Topic :: Software Development :: Libraries :: Python Modules"
 ]
-dependencies = []
+dependencies = [
+    "openai>=2.45.0",
+]
 
 
 [project.urls]
