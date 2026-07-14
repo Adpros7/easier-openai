@@ -47,13 +47,12 @@ NODE_DIR = (Path(__file__).parent / "_node").resolve()
 og_code = Path(NODE_DIR / "model_info.js").read_text()
 Path("modelInfoRun.js").write_text(og_code)
 
-info = subprocess.run(
-    ["node", "modelInfoRun.js", "gpt-5.5"],
-    capture_output=True,
-    text=True,
-    cwd=CACHE_DIR,
-)
+def get_model_info(model: str):
+    info = subprocess.run(
+        ["node", "modelInfoRun.js", model],
+        capture_output=True,
+        text=True,
+        cwd=CACHE_DIR,
+    )
 
-print(info)
-
-print(json.loads(info.stdout))
+    return json.loads(info.stdout)
