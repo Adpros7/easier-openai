@@ -44,11 +44,16 @@ rename("models-page-data.react.BcABuaNa.js", "models.js")
 
 NODE_DIR = (Path(__file__).parent / "_node").resolve()
 
-og_code = Path(NODE_DIR / "endpoints.js").read_text()
-Path("endpointRun.js").write_text(og_code)
-out = subprocess.run(
-    ["node", "endpointRun.js", "gpt-4o"], capture_output=True, text=True, cwd=CACHE_DIR
+og_code = Path(NODE_DIR / "model_info.js").read_text()
+Path("modelInfoRun.js").write_text(og_code)
+
+info = subprocess.run(
+    ["node", "modelInfoRun.js", "gpt-5.5"],
+    capture_output=True,
+    text=True,
+    cwd=CACHE_DIR,
 )
 
+print(info)
 
-print(json.loads(out.stdout))
+print(json.loads(info.stdout))
