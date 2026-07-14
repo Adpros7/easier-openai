@@ -1,6 +1,6 @@
+from openai.types import ResponsesModel
 from typing import Optional, TypeAlias
 from openai import OpenAI
-import Cha
 
 
 Models: TypeAlias = ResponsesModel

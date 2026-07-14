@@ -1,30 +1,20 @@
+from os import mkdir
 import httpx
 from os.path import exists
-import os
-import json
-import re
 from pathlib import Path
 
-# Path to the downloaded JS bundle
-JS_FILE = "models-page-data.react.BcABuaNa.js"
 
-if not exists(JS_FILE):
-    with open(JS_FILE, "w", encoding="utf-8") as f:
-        f.write(httpx.get("https://developers.openai.com/_astro/models-page-data.react.BcABuaNa.js").text)
+mkdir("")
 
-text = Path(JS_FILE).read_text(encoding="utf-8")
+files = ["Terminal.DIPAEiD0.js", "Search.DqJu-Pk0.js", "Desktop.CRMYUmUT.js", "model-recommendations.react.BiUt_81s.js", "navigation.react.B17za4aM.js", "jsx-runtime.u17CrQMm.js", "index.CzFgSF8h.js"]
 
-# Matches:
-# var X={name:"gpt-5.5", ... supported_endpoints:["responses","batch"] ...}
-pattern = re.compile(
-    r'name:"([^"]+)".*?supported_endpoints:\[([^\]]*)\]',
-    re.DOTALL,
-)
+for JS_FILE in files:
+    if not exists(JS_FILE):
+        with open(JS_FILE, "w", encoding="utf-8") as f:
+            f.write(
+                httpx.get(
+                    f"https://developers.openai.com/_astro/{JS_FILE}"
+                ).text
+            )
 
-result = {}
 
-for model, endpoints in pattern.findall(text):
-    eps = re.findall(r'"([^"]+)"', endpoints)
-    result[model] = eps
-
-print(json.dumps(result, indent=2, sort_keys=True))
