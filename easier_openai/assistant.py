@@ -19,3 +19,4 @@ class Assistant:
     def change_base_url(self, new_url: str):
         self.client._base_url = URL(new_url)
     
+    def 
