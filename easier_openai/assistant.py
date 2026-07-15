@@ -2,7 +2,7 @@ from time import sleep
 from openai.types.responses.response import Response
 from httpx import URL
 from openai.types.conversations.conversation import Conversation
-from typing import Optional
+from typing import Optional, overload, Literal
 from openai import OpenAI
 from .models import Model
 
@@ -37,6 +37,7 @@ class Assistant:
 
     class FailedError(RuntimeError):
         pass
+    
 
     class Task:
         def __init__(self, client: OpenAI, id: str):
@@ -57,6 +58,60 @@ class Assistant:
                     else self._get_resp().output_text
                 )
 
+    @overload
+    def chat(
+        self,
+        input: str,
+        *,
+        long_running: Literal[False] = False,
+        wait_for_finish: Literal[True] = True,
+        return_full_response: Literal[False] = False,
+        stream: bool = False,
+    ) -> str: ...
+
+    @overload
+    def chat(
+        self,
+        input: str,
+        *,
+        long_running: Literal[False] = False,
+        wait_for_finish: Literal[True] = True,
+        return_full_response: Literal[True],
+        stream: bool = False,
+    ) -> Response: ...
+
+    @overload
+    def chat(
+        self,
+        input: str,
+        *,
+        long_running: Literal[True],
+        wait_for_finish: Literal[False],
+        return_full_response: bool = False,
+        stream: bool = False,
+    ) -> Task: ...
+
+    @overload
+    def chat(
+        self,
+        input: str,
+        *,
+        long_running: Literal[True],
+        wait_for_finish: Literal[True],
+        return_full_response: Literal[False] = False,
+        stream: bool = False,
+    ) -> str: ...
+
+    @overload
+    def chat(
+        self,
+        input: str,
+        *,
+        long_running: Literal[True],
+        wait_for_finish: Literal[True],
+        return_full_response: Literal[True],
+        stream: bool = False,
+    ) -> Response: ...
     def chat(
         self,
         input,
@@ -64,7 +119,7 @@ class Assistant:
         wait_for_finish: bool = True,
         return_full_response: bool = False,
         stream: bool = False,
-    ):
+    ) -> Task | str | Response:
         if not long_running:
             out: Response = self.client.responses.create(
                 conversation=self.conversation.id if self.conversation else None,
@@ -111,7 +166,11 @@ class Assistant:
 if __name__ == "__main__":
     bob = Assistant("you are a joke teller", model="gpt-5")
     stream = bob.chat("hi", long_running=True, wait_for_finish=False)
+    flow = bob.chat(
+        "tell me a joke abot otters", long_running=True, wait_for_finish=False
+    )
     for i in range(5):
-        print(stream.check_progress())
+        print("stream", stream.check_progress())
+        print("flow", flow.check_progress)
         sleep(2)
-        print(stream.return_output_if_done())
+        print("stream", stream.return_output_if_done())
