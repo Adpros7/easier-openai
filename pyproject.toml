@@ -18,6 +18,7 @@ classifiers = [
 ]
 dependencies = [
     "openai>=2.45.0",
+    "openai-agents>=0.18.2",
     "platformdirs>=4.10.0",
 ]
 
