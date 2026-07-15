@@ -1,3 +1,6 @@
+from openai.types.responses import ParsedResponse
+from openai.lib.streaming.responses import ResponseStreamManager
+from collections.abc import Iterator
 from time import sleep
 from openai.types.responses.response import Response
 from httpx import URL
@@ -57,23 +60,47 @@ class Assistant:
                     else self._get_resp().output_text
                 )
 
+    class Easystream(Iterator[str]):
+        def __init__(self, stream: ResponseStreamManager):
+            self._manager = stream
+            self._stream = stream.__enter__()
+            self.output_text: str
+            self.response: ParsedResponse[None]
+        
+        def __iter__(self):
+            return self
+        
+        def __next__(self):
+            try:
+                while True:
+                    event = next(self._stream)
+
+                    if event.type == "response.output_text.delta":
+                        return event.delta
+            
+            except StopIteration:
+                self.response: ParsedResponse[None] = self._stream.get_final_response()
+                self.output_text = self.response.output_text
+                self._manager.__exit__(None, None, None)
+                raise
+
     def _stream(self, input, return_full_response: bool = False):
-        out = self.client.responses.create(
+        out = self.client.responses.stream(
                     conversation=self.conversation.id if self.conversation else None,
                     input=input,
                     instructions=self.instructions,
                     model=self.model,
-                    stream=True
                 )
+        return self.Easystream(out)
 
-        cur = ""
-        for event in out:
-            if event.type == "response.output_text.delta":
-                cur += event.delta
-                yield event.delta
+        # cur = ""
+        # for event in out:
+        #     if event.type == "response.output_text.delta":
+        #         cur += event.delta
+        #         yield event.delta
 
-            if event.type == "response.completed":
-                return cur
+        #     if event.type == "response.completed":
+        #         return cur
 
     @overload
     def chat(
