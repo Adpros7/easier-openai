@@ -24,7 +24,7 @@ class Assistant:
     def change_instructions(self, new_instructions: str):
         self.instructions: str = new_instructions
     
-    def chat(self, input, long_running: bool = False, return_full_response: bool = False):  
+    def chat(self, input, long_running: bool = False, return_full_response: bool = False, stream: bool = False):  
         if not long_running:
             out: Response = self.client.responses.create(
                 conversation=self.conversation.id if self.conversation else None,
@@ -33,3 +33,9 @@ class Assistant:
             )
 
             return out if return_full_response else out.output_text
+
+        else:
+            if stream:
+                raise NotImplementedError("Streaming support with long running taks (background mode) is not supported. Its not on the todo list either, but feel free to open a PR")
+            
+            
