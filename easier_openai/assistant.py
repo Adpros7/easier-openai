@@ -1,3 +1,4 @@
+from time import sleep
 from openai.types.responses.response import Response
 from httpx import URL
 from openai.types.conversations.conversation import Conversation
@@ -24,7 +25,11 @@ class Assistant:
     def change_instructions(self, new_instructions: str):
         self.instructions: str = new_instructions
     
-    def chat(self, input, long_running: bool = False, return_full_response: bool = False, stream: bool = False):  
+    class FailedError(RuntimeError):
+        pass
+    
+
+    def chat(self, input, long_running: bool = False, wait_for_finish: bool = True, return_full_response: bool = False, stream: bool = False):  
         if not long_running:
             out: Response = self.client.responses.create(
                 conversation=self.conversation.id if self.conversation else None,
@@ -38,4 +43,19 @@ class Assistant:
             if stream:
                 raise NotImplementedError("Streaming support with long running taks (background mode) is not supported. Its not on the todo list either, but feel free to open a PR")
             
-            
+            out: Response = self.client.responses.create(
+                conversation=self.conversation.id if self.conversation else None,
+                input=input,
+                instructions=self.instructions,
+                background=True
+            )
+
+            if wait_for_finish:
+                while out.status in {"queued", "in_progress"}:
+                    sleep(2)
+                    out: Response = self.client.responses.retrieve(out.id)
+                
+                if out.status in {"cancelled", "failed"}:
+                    raise self.FailedError(f"Response Failed. {out.status}")
+                
+                
