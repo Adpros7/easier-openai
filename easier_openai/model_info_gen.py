@@ -47,6 +47,7 @@ NODE_DIR = (Path(__file__).parent / "_node").resolve()
 og_code = Path(NODE_DIR / "model_info.js").read_text()
 Path("modelInfoRun.js").write_text(og_code)
 
+
 def get_model_info(model: str):
     info = subprocess.run(
         ["node", "modelInfoRun.js", model],

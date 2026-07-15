@@ -1,0 +1,1 @@
+You must have your OpenAI API key set as an enviroment variable in order for type checking to wokr correctly
