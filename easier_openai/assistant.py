@@ -1,4 +1,3 @@
-import agents
 from time import sleep
 from openai.types.responses.response import Response
 from httpx import URL
@@ -6,7 +5,6 @@ from openai.types.conversations.conversation import Conversation
 from typing import Optional, overload, Literal
 from openai import OpenAI
 from .models import Model
-from agents import Runner
 
 
 class Assistant:
@@ -39,7 +37,6 @@ class Assistant:
 
     class FailedError(RuntimeError):
         pass
-    
 
     class Task:
         def __init__(self, client: OpenAI, id: str):
@@ -59,6 +56,24 @@ class Assistant:
                     if return_full_response
                     else self._get_resp().output_text
                 )
+
+    def _stream(self, input, return_full_response: bool = False):
+        out = self.client.responses.create(
+                    conversation=self.conversation.id if self.conversation else None,
+                    input=input,
+                    instructions=self.instructions,
+                    model=self.model,
+                    stream=True
+                )
+
+        cur = ""
+        for event in out:
+            if event.type == "response.output_text.delta":
+                cur += event.delta
+                yield event.delta
+
+            if event.type == "response.completed":
+                return cur
 
     @overload
     def chat(
@@ -116,21 +131,25 @@ class Assistant:
     ) -> Response: ...
     def chat(
         self,
-        input,
+        input: str,
         long_running: bool = False,
         wait_for_finish: bool = True,
         return_full_response: bool = False,
         stream: bool = False,
     ) -> Task | str | Response:
         if not long_running:
-            out: Response = self.client.responses.create(
-                conversation=self.conversation.id if self.conversation else None,
-                input=input,
-                instructions=self.instructions,
-                model=self.model,
-            )
+            if not stream:
+                out: Response = self.client.responses.create(
+                    conversation=self.conversation.id if self.conversation else None,
+                    input=input,
+                    instructions=self.instructions,
+                    model=self.model,
+                )
 
-            return out if return_full_response else out.output_text
+                return out if return_full_response else out.output_text
+            
+            else:
+                return self._stream(input=input)
 
         else:
             if stream:
@@ -169,10 +188,14 @@ if __name__ == "__main__":
     bob = Assistant("you are a joke teller", model="gpt-5")
     stream = bob.chat("hi", long_running=True, wait_for_finish=False)
     flow = bob.chat(
-        "tell me a joke abot otters", long_running=True, wait_for_finish=False
+        "say h. only h", long_running=True, wait_for_finish=False
     )
-    for i in range(5):
+    while not (stream._get_resp().status, flow._get_resp().status) == (
+        "completed",
+        "completed",
+    ):
         print("stream", stream.check_progress())
-        print("flow", flow.check_progress)
+        print("flow", flow.check_progress())
         sleep(2)
         print("stream", stream.return_output_if_done())
+        print("flow", flow.return_output_if_done())
