@@ -35,6 +35,7 @@ class Assistant:
                 conversation=self.conversation.id if self.conversation else None,
                 input=input,
                 instructions=self.instructions,
+                model=self.model
             )
 
             return out if return_full_response else out.output_text
@@ -75,3 +76,8 @@ class Assistant:
     def return_output_if_done(self, id: str, return_full_response: bool = False):
         if self._get_resp(id).status == "completed":
             return self._get_resp(id) if return_full_response else self._get_resp(id).output_text
+
+
+if __name__ == "__main__":
+    bob = Assistant("you are a joke teller", model="gpt-5")
+    print(bob.chat("hi"))
