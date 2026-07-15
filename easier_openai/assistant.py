@@ -1,3 +1,4 @@
+import agents
 from time import sleep
 from openai.types.responses.response import Response
 from httpx import URL
@@ -5,6 +6,7 @@ from openai.types.conversations.conversation import Conversation
 from typing import Optional, overload, Literal
 from openai import OpenAI
 from .models import Model
+from agents import Runner
 
 
 class Assistant:

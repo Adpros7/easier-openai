@@ -17,6 +17,7 @@ classifiers = [
   "Topic :: Software Development :: Libraries :: Python Modules"
 ]
 dependencies = [
+    "function-schema>=0.4.5",
     "openai>=2.45.0",
     "openai-agents>=0.18.2",
     "platformdirs>=4.10.0",
