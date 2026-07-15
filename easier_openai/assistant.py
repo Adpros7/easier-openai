@@ -48,7 +48,8 @@ class Assistant:
                 conversation=self.conversation.id if self.conversation else None,
                 input=input,
                 instructions=self.instructions,
-                background=True
+                background=True,
+                model=self.model
             )
 
             if wait_for_finish:
@@ -80,4 +81,8 @@ class Assistant:
 
 if __name__ == "__main__":
     bob = Assistant("you are a joke teller", model="gpt-5")
-    print(bob.chat("hi"))
+    stream = bob.chat("hi", long_running=True, wait_for_finish=False)
+    for i in range(5):
+        print(bob.check_progress(stream))
+        sleep(2)
+        print(bob.return_output_if_done(stream))
