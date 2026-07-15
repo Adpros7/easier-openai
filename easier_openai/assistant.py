@@ -58,4 +58,20 @@ class Assistant:
                 if out.status in {"cancelled", "failed"}:
                     raise self.FailedError(f"Response Failed. {out.status}")
                 
+                if out.status == "incompleted":
+                    raise self.FailedError(f"Incomplete response. {out.incomplete_details}")
                 
+                return out if return_full_response else out.output_text
+            
+            else:
+                return out.id
+    
+    def _get_resp(self, id: str) -> Response:
+        return self.client.responses.retrieve(id)
+    
+    def check_progress(self, id: str):
+        return self._get_resp(id).status
+    
+    def return_output_if_done(self, id: str, return_full_response: bool = False):
+        if self._get_resp(id).status == "completed":
+            return self._get_resp(id) if return_full_response else self._get_resp(id).output_text
