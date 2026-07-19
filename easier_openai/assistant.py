@@ -60,7 +60,7 @@ class Assistant:
                     else self._get_resp().output_text
                 )
 
-    class Easystream(Iterator[str]):
+    class _Easystream(Iterator[str]):
         def __init__(self, stream: ResponseStreamManager):
             self._manager = stream
             self._stream = stream.__enter__()
@@ -91,7 +91,7 @@ class Assistant:
                     instructions=self.instructions,
                     model=self.model,
                 )
-        return self.Easystream(out)
+        return self._Easystream(out)
 
         # cur = ""
         # for event in out:
@@ -213,16 +213,5 @@ class Assistant:
 
 if __name__ == "__main__":
     bob = Assistant("you are a joke teller", model="gpt-5")
-    stream = bob.chat("hi", long_running=True, wait_for_finish=False)
-    flow = bob.chat(
-        "say h. only h", long_running=True, wait_for_finish=False
-    )
-    while not (stream._get_resp().status, flow._get_resp().status) == (
-        "completed",
-        "completed",
-    ):
-        print("stream", stream.check_progress())
-        print("flow", flow.check_progress())
-        sleep(2)
-        print("stream", stream.return_output_if_done())
-        print("flow", flow.return_output_if_done())
+    for i in bob.chat("hi, how are you", stream=True):
+        print(i, sep="", end="", flush=True)
