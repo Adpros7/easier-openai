@@ -16,14 +16,13 @@ class Assistant:
         instructions: str = "",
         api_key: Optional[str] = None,
         model: Model = "gpt-5.5",
-        base_url: str = "https://api.openai.com/v1",
         conversation: bool = True,
     ):
-        self.client = OpenAI(api_key=api_key, base_url=base_url)
+        self.client = OpenAI(api_key=api_key)
         self.conversation: Conversation | None = (
             self.client.conversations.create() if conversation else None
         )
-        self.model = model
+        self.model: Model | str = model
         self.instructions: str = instructions
 
     def change_model(self, model: Model):
@@ -66,10 +65,10 @@ class Assistant:
             self._stream = stream.__enter__()
             self.output_text: str
             self.response: ParsedResponse[None]
-        
+
         def __iter__(self):
             return self
-        
+
         def __next__(self):
             try:
                 while True:
@@ -77,7 +76,7 @@ class Assistant:
 
                     if event.type == "response.output_text.delta":
                         return event.delta
-            
+
             except StopIteration:
                 self.response: ParsedResponse[None] = self._stream.get_final_response()
                 self.output_text = self.response.output_text
@@ -86,11 +85,11 @@ class Assistant:
 
     def _stream(self, input, return_full_response: bool = False):
         out = self.client.responses.stream(
-                    conversation=self.conversation.id if self.conversation else None,
-                    input=input,
-                    instructions=self.instructions,
-                    model=self.model,
-                )
+            conversation=self.conversation.id if self.conversation else None,
+            input=input,
+            instructions=self.instructions,
+            model=self.model,
+        )
         return self._Easystream(out)
 
     @overload
@@ -165,7 +164,7 @@ class Assistant:
                 )
 
                 return out if return_full_response else out.output_text
-            
+
             else:
                 return self._stream(input=input)
 
@@ -202,7 +201,20 @@ class Assistant:
                 return self.Task(self.client, out.id)
 
 
+class OpenSourceAssistant(Assistant):
+    def __init__(
+        self,
+        instructions: str = "",
+        model: str = "gemma4",
+        base_url: str = "127.0.0.1:11434"
+    ):
+        asst = Assistant(instructions=instructions, api_key="key", conversation=False)
+        asst.client.base_url = base_url
+        asst.model = model
+        return asst
+
+
 if __name__ == "__main__":
-    bob = Assistant("you are a joke teller", model="gpt-5")
+    bob = Assistant("you are a joke teller")
     for i in bob.chat("hi, how are you", stream=True):
         print(i, sep="", end="", flush=True)
