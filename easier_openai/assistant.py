@@ -93,15 +93,6 @@ class Assistant:
                 )
         return self._Easystream(out)
 
-        # cur = ""
-        # for event in out:
-        #     if event.type == "response.output_text.delta":
-        #         cur += event.delta
-        #         yield event.delta
-
-        #     if event.type == "response.completed":
-        #         return cur
-
     @overload
     def chat(
         self,
