@@ -65,6 +65,7 @@ class Assistant:
             self._stream = stream.__enter__()
             self.output_text: str
             self.response: ParsedResponse[None]
+            self.open: bool = True
 
         def __iter__(self):
             return self
@@ -73,14 +74,18 @@ class Assistant:
             try:
                 while True:
                     event = next(self._stream)
-
                     if event.type == "response.output_text.delta":
                         return event.delta
 
             except StopIteration:
-                self.response: ParsedResponse[None] = self._stream.get_final_response()
-                self.output_text = self.response.output_text
-                self._manager.__exit__(None, None, None)
+                try:
+                    self.response: ParsedResponse[None] = (
+                        self._stream.get_final_response()
+                    )
+                    self.output_text = self.response.output_text
+                finally:
+                    self._manager.__exit__(None, None, None)
+                    self.open = False
                 raise
 
     def _stream(self, input, return_full_response: bool = False):
@@ -171,7 +176,7 @@ class Assistant:
         else:
             if stream:
                 raise NotImplementedError(
-                    "Streaming support with long running taks (background mode) is not supported. Its not on the todo list either, but feel free to open a PR"
+                    "Streaming support with long running tasks (background mode) is not supported. Its not on the todo list either, but feel free to open a PR"
                 )
 
             out: Response = self.client.responses.create(
@@ -190,10 +195,10 @@ class Assistant:
                 if out.status in {"cancelled", "failed"}:
                     raise self.FailedError(f"Response Failed. {out.status}")
 
-                if out.status == "incompleted":
+                if out.status == "incomplete":
                     raise self.FailedError(
                         f"Incomplete response. {out.incomplete_details}"
-                    )
+                    ) 
 
                 return out if return_full_response else out.output_text
 
@@ -206,15 +211,20 @@ class OpenSourceAssistant(Assistant):
         self,
         instructions: str = "",
         model: str = "gemma4",
-        base_url: str = "127.0.0.1:11434"
+        base_url: str = "http://127.0.0.1:8000/v1",
     ):
-        asst = Assistant(instructions=instructions, api_key="key", conversation=False)
-        asst.client.base_url = base_url
-        asst.model = model
-        return asst
+        super().__init__(instructions, api_key="hello", conversation=False)
+        self.model = model
+        url = base_url if base_url.endswith("/v1") else base_url + "/v1"
+        self.client.base_url = URL(url)
+        self.instructions += "\n ALSO, NEVER USE ANY TAGS or EXPOSE ANY REASONING LIKE <strong> OR <final> BECAUSE IT IS NOT SUPPORTED. THE ONLY EXCEPTION IS IF THE USER EXPLICITLY ASKS FOR IT. "
 
 
 if __name__ == "__main__":
-    bob = Assistant("you are a joke teller")
+    bob = OpenSourceAssistant(
+        "",
+        model="google/gemma-4-26b-a4b-qat",
+        base_url="http://127.0.0.1:1234",
+    )
     for i in bob.chat("hi, how are you", stream=True):
         print(i, sep="", end="", flush=True)
